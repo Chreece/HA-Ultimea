@@ -10,16 +10,23 @@ from homeassistant.const import CONF_ADDRESS, Platform
 from homeassistant.core import HomeAssistant
 
 from .const import (
+    CONF_ABILITY_FLAGS,
+    CONF_CAPABILITIES,
     CONF_DISCONNECT_DELAY,
     CONF_FIRMWARE,
     CONF_KEEP_CONNECTED,
+    CONF_HEARTBEAT_INTERVAL,
     CONF_MODEL,
+    CONF_PROFILE,
+    CONF_PROTOCOL_VERSION,
     CONF_SERIAL,
+    CONF_STANDBY_OPTIONS,
+    CONF_TRANSPORT,
     CONF_VOLUME_MAX,
     DEFAULT_DISCONNECT_DELAY,
     DEFAULT_KEEP_CONNECTED,
+    DEFAULT_HEARTBEAT_INTERVAL,
     DEFAULT_VOLUME_MAX,
-    SUPPORTED_MODEL,
 )
 from .device import UltimeaDevice
 
@@ -34,16 +41,25 @@ class UltimeaRuntimeData:
     volume_max: int
 
 
+def _capability_updates(device: UltimeaDevice) -> dict:
+    return {
+        CONF_MODEL: device.identity.model,
+        CONF_SERIAL: device.identity.serial,
+        CONF_FIRMWARE: device.identity.firmware,
+        CONF_PROTOCOL_VERSION: device.identity.protocol_version,
+        CONF_PROFILE: device.identity.profile,
+        CONF_CAPABILITIES: sorted(f.value for f in device.capabilities.features),
+        CONF_ABILITY_FLAGS: list(device.capabilities.raw_ability_flags),
+        CONF_STANDBY_OPTIONS: list(device.capabilities.standby_options),
+        CONF_TRANSPORT: device.transport,
+    }
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Set up a configured D80 Boom."""
+    """Set up a configured ULTIMEA soundbar."""
     address = entry.data[CONF_ADDRESS].upper()
     options = entry.options
 
-    # v0.1.0/v0.1.1 promoted the device serial to config-entry unique_id after
-    # setup. Bluetooth discovery only knows the address, which caused HA to
-    # surface the already-configured D80 as a second discovery. Migrate existing
-    # entries back to the Bluetooth address; the serial remains in entry data
-    # and in the Device Registry identifiers.
     if entry.unique_id != address:
         conflict = next(
             (
@@ -61,13 +77,23 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         address,
         entry.title,
         keep_connected=options.get(CONF_KEEP_CONNECTED, DEFAULT_KEEP_CONNECTED),
-        disconnect_delay=options.get(
-            CONF_DISCONNECT_DELAY, DEFAULT_DISCONNECT_DELAY
-        ),
+        disconnect_delay=options.get(CONF_DISCONNECT_DELAY, DEFAULT_DISCONNECT_DELAY),
+        heartbeat_interval=options.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL),
+        preferred_transport=entry.data.get(CONF_TRANSPORT),
     )
-    device.identity.model = entry.data.get(CONF_MODEL) or SUPPORTED_MODEL
+    device.identity.model = entry.data.get(CONF_MODEL)
     device.identity.serial = entry.data.get(CONF_SERIAL)
     device.identity.firmware = entry.data.get(CONF_FIRMWARE)
+    device.identity.protocol_version = entry.data.get(CONF_PROTOCOL_VERSION)
+    device.identity.profile = entry.data.get(CONF_PROFILE)
+    device.restore_capabilities(
+        features=entry.data.get(CONF_CAPABILITIES, ()),
+        raw_ability_flags=entry.data.get(CONF_ABILITY_FLAGS, ()),
+        standby_options=entry.data.get(CONF_STANDBY_OPTIONS, ()),
+        transport=entry.data.get(CONF_TRANSPORT),
+        protocol_version=entry.data.get(CONF_PROTOCOL_VERSION),
+        profile=entry.data.get(CONF_PROFILE),
+    )
 
     entry.runtime_data = UltimeaRuntimeData(
         device=device,
@@ -93,23 +119,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
-    # Connect once when reachable and actively read the complete D80 state before
-    # entities are created. This prevents every entity starting as ``unknown``.
     await device.async_start()
 
     if device.available:
-        identity = device.identity
-        updates = {}
-        if identity.model and identity.model != entry.data.get(CONF_MODEL):
-            updates[CONF_MODEL] = identity.model
-        if identity.serial and identity.serial != entry.data.get(CONF_SERIAL):
-            updates[CONF_SERIAL] = identity.serial
-        if identity.firmware and identity.firmware != entry.data.get(CONF_FIRMWARE):
-            updates[CONF_FIRMWARE] = identity.firmware
-        if updates:
-            hass.config_entries.async_update_entry(
-                entry, data={**entry.data, **updates}
-            )
+        fresh = _capability_updates(device)
+        merged = {**entry.data, **{k: v for k, v in fresh.items() if v is not None}}
+        if merged != dict(entry.data):
+            hass.config_entries.async_update_entry(entry, data=merged)
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True

@@ -2,17 +2,85 @@
   "title": "ULTIMEA",
   "config": {
     "step": {
-      "user": {"title": "Προσθήκη ηχόμπαρας ULTIMEA", "description": "Επίλεξε μια Poseidon D80 Boom που εντοπίστηκε ή εισήγαγε τη διεύθυνση BLE της.", "data": {"address": "Διεύθυνση Bluetooth"}},
-      "bluetooth_confirm": {"title": "Προσθήκη {name}", "description": "Το Home Assistant θα συνδεθεί μία φορά για να επιβεβαιώσει ότι η συσκευή είναι Poseidon D80 Boom."}
+      "user": {
+        "title": "Προσθήκη ηχόμπαρας ULTIMEA",
+        "description": "Επίλεξε μια ηχόμπαρα Bluetooth ULTIMEA που εντοπίστηκε ή εισήγαγε τη διεύθυνση BLE. Κατά τη ρύθμιση ανιχνεύονται αυτόματα το πρωτόκολλο και οι λειτουργίες που απαντούν με ασφάλεια.",
+        "data": {
+          "address": "Διεύθυνση Bluetooth"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Προσθήκη {name}",
+        "description": "Το Home Assistant θα συνδεθεί μία φορά με το {name}, θα εντοπίσει το transport της εφαρμογής ULTIMEA και θα ελέγξει τις υποστηριζόμενες λειτουργίες."
+      }
     },
-    "error": {"cannot_connect": "Δεν ήταν δυνατή η σύνδεση με την ηχόμπαρα", "not_supported": "Η συσκευή Bluetooth δεν είναι υποστηριζόμενη Poseidon D80 Boom"},
-    "abort": {"already_configured": "Αυτή η ηχόμπαρα έχει ήδη ρυθμιστεί", "not_supported": "Αυτή η συσκευή Bluetooth ULTIMEA δεν είναι υποστηριζόμενη Poseidon D80 Boom"}
+    "error": {
+      "cannot_connect": "Δεν ήταν δυνατή η σύνδεση με την ηχόμπαρα",
+      "not_supported": "Η συσκευή Bluetooth δεν παρέχει υποστηριζόμενο πρωτόκολλο ελέγχου εφαρμογής ULTIMEA"
+    },
+    "abort": {
+      "already_configured": "Αυτή η ηχόμπαρα έχει ήδη ρυθμιστεί",
+      "not_supported": "Αυτή η συσκευή Bluetooth δεν παρέχει υποστηριζόμενο πρωτόκολλο ελέγχου εφαρμογής ULTIMEA"
+    }
   },
-  "options": {"step": {"init": {"title": "Επιλογές ULTIMEA", "description": "Η μόνιμη σύνδεση δίνει άμεσες ενημερώσεις από το φυσικό τηλεχειριστήριο. Η σύνδεση κατά απαίτηση απελευθερώνει την D80 για την εφαρμογή ULTIMEA μετά την καθυστέρηση.", "data": {"keep_connected": "Διατήρηση σύνδεσης Bluetooth", "disconnect_delay": "Καθυστέρηση αποσύνδεσης κατά απαίτηση (δευτερόλεπτα)", "volume_max": "Μέγιστη ένταση D80"}}}},
-  "entity": {"select": {
-    "display_brightness": {"name": "Φωτεινότητα οθόνης", "state": {"dim": "Πολύ χαμηλή", "low": "Χαμηλή", "medium": "Μεσαία", "normal": "Κανονική", "high": "Υψηλή"}},
-    "screen_timeout": {"name": "Αυτόματο σβήσιμο οθόνης", "state": {"never": "Ποτέ", "5_seconds": "5 δευτερόλεπτα", "30_seconds": "30 δευτερόλεπτα", "60_seconds": "60 δευτερόλεπτα"}},
-    "prompt_sound": {"name": "Ήχος επιβεβαίωσης", "state": {"none": "Κανένας", "low": "Χαμηλός", "medium": "Μεσαίος", "high": "Υψηλός"}},
-    "auto_standby": {"name": "Αυτόματο standby", "state": {"never": "Ποτέ", "15_minutes": "15 λεπτά", "30_minutes": "30 λεπτά", "60_minutes": "60 λεπτά", "4_hours": "4 ώρες", "8_hours": "8 ώρες", "12_hours": "12 ώρες", "24_hours": "24 ώρες", "48_hours": "48 ώρες"}}
-  }}
+  "options": {
+    "step": {
+      "init": {
+        "title": "Επιλογές ULTIMEA",
+        "description": "Η μόνιμη σύνδεση δίνει άμεσες ενημερώσεις από το φυσικό τηλεχειριστήριο. Η σύνδεση κατά απαίτηση απελευθερώνει την ηχόμπαρα για την εφαρμογή ULTIMEA μετά την καθυστέρηση. Όταν η ηχόμπαρα δεν είναι διαθέσιμη, το Home Assistant δοκιμάζει ξανά μόνο αυτή τη συσκευή σε αυτό το διάστημα μέχρι να απαντήσει ξανά.",
+        "data": {
+          "keep_connected": "Διατήρηση σύνδεσης Bluetooth",
+          "disconnect_delay": "Καθυστέρηση αποσύνδεσης κατά απαίτηση (δευτερόλεπτα)",
+          "volume_max": "Μέγιστη ένταση πρωτοκόλλου",
+          "heartbeat_interval": "Διάστημα heartbeat όταν δεν είναι διαθέσιμο (δευτερόλεπτα)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "display_brightness": {
+        "name": "Φωτεινότητα οθόνης",
+        "state": {
+          "dim": "Πολύ χαμηλή",
+          "low": "Χαμηλή",
+          "medium": "Μεσαία",
+          "normal": "Κανονική",
+          "high": "Υψηλή"
+        }
+      },
+      "screen_timeout": {
+        "name": "Αυτόματο σβήσιμο οθόνης",
+        "state": {
+          "never": "Ποτέ",
+          "5_seconds": "5 δευτερόλεπτα",
+          "30_seconds": "30 δευτερόλεπτα",
+          "60_seconds": "60 δευτερόλεπτα"
+        }
+      },
+      "prompt_sound": {
+        "name": "Ήχος επιβεβαίωσης",
+        "state": {
+          "none": "Κανένας",
+          "low": "Χαμηλός",
+          "medium": "Μεσαίος",
+          "high": "Υψηλός"
+        }
+      },
+      "auto_standby": {
+        "name": "Αυτόματο standby",
+        "state": {
+          "never": "Ποτέ",
+          "15_minutes": "15 λεπτά",
+          "30_minutes": "30 λεπτά",
+          "60_minutes": "60 λεπτά",
+          "4_hours": "4 ώρες",
+          "8_hours": "8 ώρες",
+          "12_hours": "12 ώρες",
+          "24_hours": "24 ώρες",
+          "48_hours": "48 ώρες"
+        }
+      }
+    }
+  }
 }

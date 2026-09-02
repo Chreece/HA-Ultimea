@@ -1,0 +1,72 @@
+name: Bug report
+description: Report a reproducible problem with the ULTIMEA integration
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please remove private Bluetooth addresses/serials from pasted logs. Home Assistant diagnostics produced by this integration redact them automatically.
+  - type: input
+    id: ha_version
+    attributes:
+      label: Home Assistant version
+      placeholder: 2026.9.x
+    validations:
+      required: true
+  - type: input
+    id: integration_version
+    attributes:
+      label: ULTIMEA integration version
+      placeholder: 2026.09.02
+    validations:
+      required: true
+  - type: input
+    id: firmware
+    attributes:
+      label: D80 firmware
+      description: Firmware shown on the device page, if available.
+  - type: dropdown
+    id: bluetooth_route
+    attributes:
+      label: Bluetooth connection
+      options:
+        - Home Assistant host adapter
+        - ESPHome Bluetooth proxy
+        - Other connectable Bluetooth proxy
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. ...
+        2. ...
+        3. ...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      render: text
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I am using a Poseidon D80 Boom (U2623).
+          required: true
+        - label: I tested with the latest release.
+          required: true
+        - label: I removed private identifiers from manually pasted logs.
+          required: true

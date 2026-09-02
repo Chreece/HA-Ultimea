@@ -6,31 +6,55 @@ from enum import StrEnum
 
 DOMAIN = "ultimea"
 MANUFACTURER = "ULTIMEA"
-SUPPORTED_MODEL = "Poseidon D80 Boom"
-SUPPORTED_MODEL_NUMBER = "U2623"
+VERIFIED_MODEL = "Poseidon D80 Boom"
+DEFAULT_DISCOVERY_NAME = "ULTIMEA soundbar"
+VERIFIED_MODEL_NUMBER = "U2623"
 
 ULTIMEA_MANUFACTURER_ID = 0x0D8C
 DISCOVERY_SERVICE_UUID = "0000260a-0000-1000-8000-00805f9b34fb"
 COMMON_SERVICE_UUID = "27758daa-bf3a-4ac6-bee5-6259ccb7c9b7"
 WRITE_UUID = "27758d11-bf3a-4ac6-bee5-6259ccb7c9b7"
 NOTIFY_UUID = "27758d22-bf3a-4ac6-bee5-6259ccb7c9b7"
+# The official APK contains a second "custom common" characteristic pair.
+CUSTOM_WRITE_UUID = "27758d55-bf3a-4ac6-bee5-6259ccb7c9b7"
+CUSTOM_NOTIFY_UUID = "27758d66-bf3a-4ac6-bee5-6259ccb7c9b7"
 OTA_SERVICE_UUID = "27758dff-bf3a-4ac6-bee5-6259ccb7c9b7"
 OTA_WRITE_UUID = "27758d33-bf3a-4ac6-bee5-6259ccb7c9b7"
 OTA_NOTIFY_UUID = "27758d44-bf3a-4ac6-bee5-6259ccb7c9b7"
 
+TRANSPORT_COMMON = "common_8d11_8d22"
+TRANSPORT_CUSTOM = "custom_8d55_8d66"
+TRANSPORT_UUIDS = {
+    TRANSPORT_COMMON: (WRITE_UUID, NOTIFY_UUID),
+    TRANSPORT_CUSTOM: (CUSTOM_WRITE_UUID, CUSTOM_NOTIFY_UUID),
+}
+
 CONF_MODEL = "model"
 CONF_SERIAL = "serial"
 CONF_FIRMWARE = "firmware"
+CONF_PROTOCOL_VERSION = "protocol_version"
+CONF_PROFILE = "profile"
+CONF_CAPABILITIES = "capabilities"
+CONF_ABILITY_FLAGS = "ability_flags"
+CONF_STANDBY_OPTIONS = "standby_options"
+CONF_TRANSPORT = "transport"
 CONF_KEEP_CONNECTED = "keep_connected"
 CONF_DISCONNECT_DELAY = "disconnect_delay"
 CONF_VOLUME_MAX = "volume_max"
+CONF_HEARTBEAT_INTERVAL = "heartbeat_interval"
 
 DEFAULT_KEEP_CONNECTED = True
 DEFAULT_DISCONNECT_DELAY = 15
 DEFAULT_VOLUME_MAX = 100
+DEFAULT_HEARTBEAT_INTERVAL = 30
 
+# Frame groups observed in the official app traffic.
+GROUP_CAPABILITIES = 0x00
 GROUP_INFO = 0x01
 GROUP_CONTROL = 0x02
+
+# The app has both LegacyDelegate.fetchAbilities and FrontierDelegate.fetchAbilities.
+CAP_FETCH_ABILITIES = 0x00
 
 # Safe read/query commands observed in the official ULTIMEA app.
 INFO_PROTOCOL = 0x01
@@ -58,8 +82,22 @@ CMD_BRIGHTNESS = 0x0C
 CMD_AUTO_STANDBY = 0x15
 
 
+class Feature(StrEnum):
+    """Operational features whose safe read path has been confirmed."""
+
+    POWER = "power"
+    MUTE = "mute"
+    VOLUME = "volume"
+    SOURCE = "source"
+    SOUND_MODE = "sound_mode"
+    BRIGHTNESS = "brightness"
+    SCREEN_TIMEOUT = "screen_timeout"
+    PROMPT_SOUND = "prompt_sound"
+    AUTO_STANDBY = "auto_standby"
+
+
 class Source(StrEnum):
-    """Supported audio sources."""
+    """Input-source values shared by the app protocol we have decoded."""
 
     OPTICAL = "optical"
     BLUETOOTH = "bluetooth"
@@ -81,7 +119,7 @@ VALUE_TO_SOURCE = {value: key for key, value in SOURCE_TO_VALUE.items()}
 
 
 class SoundMode(StrEnum):
-    """Supported sound modes."""
+    """Standard EQ/sound modes present in the ULTIMEA app."""
 
     MOVIE = "movie"
     MUSIC = "music"
@@ -159,7 +197,7 @@ VALUE_TO_PROMPT_SOUND = {value: key for key, value in PROMPT_SOUND_TO_VALUE.item
 
 
 class Standby(StrEnum):
-    """Automatic standby selection."""
+    """Known automatic-standby selections (D80 verified)."""
 
     NEVER = "never"
     MINUTES_15 = "15_minutes"

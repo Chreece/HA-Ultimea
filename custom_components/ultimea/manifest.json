@@ -1,6 +1,42 @@
 {
   "domain": "ultimea",
   "name": "ULTIMEA",
+  "bluetooth": [
+    {
+      "connectable": true,
+      "manufacturer_id": 3468
+    },
+    {
+      "connectable": true,
+      "service_uuid": "0000260a-0000-1000-8000-00805f9b34fb",
+      "local_name": "Poseidon*"
+    },
+    {
+      "connectable": true,
+      "service_uuid": "0000260a-0000-1000-8000-00805f9b34fb",
+      "local_name": "Apollo*"
+    },
+    {
+      "connectable": true,
+      "service_uuid": "0000260a-0000-1000-8000-00805f9b34fb",
+      "local_name": "Nova*"
+    },
+    {
+      "connectable": true,
+      "service_uuid": "0000260a-0000-1000-8000-00805f9b34fb",
+      "local_name": "Aura*"
+    },
+    {
+      "connectable": true,
+      "service_uuid": "0000260a-0000-1000-8000-00805f9b34fb",
+      "local_name": "Solo*"
+    },
+    {
+      "connectable": true,
+      "service_uuid": "0000260a-0000-1000-8000-00805f9b34fb",
+      "local_name": "Skywave*"
+    }
+  ],
   "codeowners": [
     "@Chreece"
   ],
@@ -9,17 +45,9 @@
     "bluetooth_adapters"
   ],
   "documentation": "https://github.com/Chreece/HA-ULTIMEA",
+  "integration_type": "device",
   "iot_class": "local_push",
   "issue_tracker": "https://github.com/Chreece/HA-ULTIMEA/issues",
-  "requirements": [
-    "bleak-retry-connector>=4.6.0"
-  ],
-  "version": "2026.9.01",
-  "bluetooth": [
-    {
-      "connectable": true,
-      "manufacturer_id": 3468,
-      "service_uuid": "0000260a-0000-1000-8000-00805f9b34fb"
-    }
-  ]
+  "requirements": [],
+  "version": "2026.09.02"
 }

@@ -1,5 +1,7 @@
 # Poseidon D80 Boom BLE protocol notes
 
+Protocol documentation for ULTIMEA integration release `2026.09.02`.
+
 These commands were obtained from the official ULTIMEA Android application and then validated by direct BLE writes to a Poseidon D80 Boom. The integration performs its own model query before accepting a device, so the implementation is model-generic and contains no test-device address.
 
 ## GATT
@@ -59,3 +61,8 @@ Zero-data queries used by the official app:
 | Auto standby | `17` | current minutes (`uint16 LE`) followed by supported option list |
 
 The official app emits these zero-payload queries during its normal device and settings initialization. The integration uses the same read path to build an initial state snapshot and to verify a write if its immediate control ACK is missed.
+
+
+## Scope and safety
+
+These values are currently enabled only for devices that identify themselves as `Poseidon D80 Boom`. The implementation does not assume that another ULTIMEA product using similar UUIDs shares the same command map. OTA/service characteristics are deliberately not used by this integration.

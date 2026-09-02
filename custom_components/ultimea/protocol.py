@@ -1,7 +1,9 @@
-"""Poseidon D80 Boom BLE protocol helpers.
+"""ULTIMEA AA/BB BLE protocol helpers.
 
-The protocol was derived from the official ULTIMEA Android application and
-validated against a physical Poseidon D80 Boom. Commands begin with 0xAA and
+The frame format was derived from the official ULTIMEA Android application and
+validated against a physical Poseidon D80 Boom. The APK exposes both Legacy and
+Frontier delegates plus common/custom BLE transports; model support is therefore
+capability-probed above this framing layer. Commands begin with 0xAA and
 notifications begin with 0xBB. The checksum is calculated using 0xAA for both
 command and notification frames.
 """
@@ -78,7 +80,7 @@ def parse_frame(payload: bytes, offset: int = 0) -> UltimeaFrame | None:
 def iter_frames(payload: bytes) -> Iterator[UltimeaFrame]:
     """Yield all valid frames embedded in a BLE notification.
 
-    D80 Boom notifications can be padded to 50 bytes and can occasionally
+    ULTIMEA notifications can be padded to 50 bytes and can occasionally
     contain another complete frame after the first one. Invalid padding is
     skipped byte-by-byte and only checksum-valid 0xBB frames are emitted.
     """

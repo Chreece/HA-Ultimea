@@ -1,4 +1,4 @@
-"""Media player platform for ULTIMEA Poseidon D80 Boom."""
+"""Media player platform for ULTIMEA soundbars."""
 
 from __future__ import annotations
 
@@ -14,12 +14,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import UltimeaRuntimeData
-from .const import (
-    CONF_VOLUME_MAX,
-    DEFAULT_VOLUME_MAX,
-    SoundMode,
-    Source,
-)
+from .const import Feature, SoundMode, Source
 from .device import UltimeaError
 from .entity import UltimeaEntity
 
@@ -54,26 +49,38 @@ async def async_setup_entry(
 
 
 class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
-    """Poseidon D80 Boom media player."""
+    """Capability-driven ULTIMEA media player."""
 
     _attr_name = None
     _attr_device_class = MediaPlayerDeviceClass.SPEAKER
-    _attr_supported_features = (
-        MediaPlayerEntityFeature.TURN_ON
-        | MediaPlayerEntityFeature.TURN_OFF
-        | MediaPlayerEntityFeature.VOLUME_SET
-        | MediaPlayerEntityFeature.VOLUME_STEP
-        | MediaPlayerEntityFeature.VOLUME_MUTE
-        | MediaPlayerEntityFeature.SELECT_SOURCE
-        | MediaPlayerEntityFeature.SELECT_SOUND_MODE
-    )
-    _attr_source_list = list(NAME_TO_SOURCE)
-    _attr_sound_mode_list = list(NAME_TO_SOUND_MODE)
 
     def __init__(self, device, volume_max: int) -> None:
         super().__init__(device)
         self._attr_unique_id = f"{device.identity.serial or device.address}_media_player"
         self._volume_max = max(1, volume_max)
+
+    @property
+    def supported_features(self) -> MediaPlayerEntityFeature:
+        features = MediaPlayerEntityFeature(0)
+        if self.device.supports(Feature.POWER):
+            features |= MediaPlayerEntityFeature.TURN_ON | MediaPlayerEntityFeature.TURN_OFF
+        if self.device.supports(Feature.VOLUME):
+            features |= MediaPlayerEntityFeature.VOLUME_SET | MediaPlayerEntityFeature.VOLUME_STEP
+        if self.device.supports(Feature.MUTE):
+            features |= MediaPlayerEntityFeature.VOLUME_MUTE
+        if self.device.supports(Feature.SOURCE):
+            features |= MediaPlayerEntityFeature.SELECT_SOURCE
+        if self.device.supports(Feature.SOUND_MODE):
+            features |= MediaPlayerEntityFeature.SELECT_SOUND_MODE
+        return features
+
+    @property
+    def source_list(self) -> list[str] | None:
+        return list(NAME_TO_SOURCE) if self.device.supports(Feature.SOURCE) else None
+
+    @property
+    def sound_mode_list(self) -> list[str] | None:
+        return list(NAME_TO_SOUND_MODE) if self.device.supports(Feature.SOUND_MODE) else None
 
     @property
     def state(self) -> MediaPlayerState | None:
@@ -105,9 +112,21 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         return SOUND_MODE_NAMES.get(mode) if mode is not None else None
 
     @property
-    def extra_state_attributes(self) -> dict[str, int] | None:
-        raw = self.device.state.raw_volume
-        return {"raw_volume": raw} if raw is not None else None
+    def extra_state_attributes(self) -> dict[str, int | str | bool] | None:
+        attrs: dict[str, int | str | bool] = {}
+        if self.device.state.raw_volume is not None:
+            attrs["raw_volume"] = self.device.state.raw_volume
+        if self.device.state.raw_source is not None:
+            attrs["raw_source"] = self.device.state.raw_source
+        if self.device.state.raw_sound_mode is not None:
+            attrs["raw_sound_mode"] = self.device.state.raw_sound_mode
+        if self.device.identity.protocol_version is not None:
+            attrs["protocol_version"] = self.device.identity.protocol_version
+        if self.device.transport:
+            attrs["ble_transport"] = self.device.transport
+        if self.device.identity.profile:
+            attrs["protocol_profile"] = self.device.identity.profile
+        return attrs or None
 
     async def _run(self, coro) -> None:
         try:
@@ -130,7 +149,7 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         if raw is None:
             raw = await self.device.async_refresh_volume()
         if raw is None:
-            raise HomeAssistantError("Unable to read the current D80 volume")
+            raise HomeAssistantError("Unable to read the current ULTIMEA volume")
         await self._run(self.device.async_set_volume(min(self._volume_max, raw + 1)))
 
     async def async_volume_down(self) -> None:
@@ -138,7 +157,7 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         if raw is None:
             raw = await self.device.async_refresh_volume()
         if raw is None:
-            raise HomeAssistantError("Unable to read the current D80 volume")
+            raise HomeAssistantError("Unable to read the current ULTIMEA volume")
         await self._run(self.device.async_set_volume(max(0, raw - 1)))
 
     async def async_mute_volume(self, mute: bool) -> None:
@@ -148,12 +167,12 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         try:
             target = NAME_TO_SOURCE[source]
         except KeyError as err:
-            raise HomeAssistantError(f"Unsupported D80 source: {source}") from err
+            raise HomeAssistantError(f"Unsupported ULTIMEA source: {source}") from err
         await self._run(self.device.async_set_source(target))
 
     async def async_select_sound_mode(self, sound_mode: str) -> None:
         try:
             target = NAME_TO_SOUND_MODE[sound_mode]
         except KeyError as err:
-            raise HomeAssistantError(f"Unsupported D80 sound mode: {sound_mode}") from err
+            raise HomeAssistantError(f"Unsupported ULTIMEA sound mode: {sound_mode}") from err
         await self._run(self.device.async_set_sound_mode(target))

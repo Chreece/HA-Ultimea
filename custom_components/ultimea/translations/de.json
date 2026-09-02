@@ -2,17 +2,85 @@
   "title": "ULTIMEA",
   "config": {
     "step": {
-      "user": {"title": "ULTIMEA-Soundbar hinzufügen", "description": "Wähle eine gefundene Poseidon D80 Boom aus oder gib ihre BLE-Adresse ein.", "data": {"address": "Bluetooth-Adresse"}},
-      "bluetooth_confirm": {"title": "{name} hinzufügen", "description": "Home Assistant verbindet sich einmalig, um zu prüfen, dass es sich um eine Poseidon D80 Boom handelt."}
+      "user": {
+        "title": "ULTIMEA-Soundbar hinzufügen",
+        "description": "Wähle eine gefundene ULTIMEA-Bluetooth-Soundbar aus oder gib ihre BLE-Adresse ein. Bei der Einrichtung werden Protokoll und sicher abfragbare Funktionen automatisch erkannt.",
+        "data": {
+          "address": "Bluetooth-Adresse"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "{name} hinzufügen",
+        "description": "Home Assistant verbindet sich einmalig mit {name}, erkennt den ULTIMEA-App-Transport und prüft die unterstützten Funktionen."
+      }
     },
-    "error": {"cannot_connect": "Verbindung zur Soundbar nicht möglich", "not_supported": "Das Bluetooth-Gerät ist keine unterstützte Poseidon D80 Boom"},
-    "abort": {"already_configured": "Diese Soundbar ist bereits eingerichtet", "not_supported": "Dieses ULTIMEA-Bluetooth-Gerät ist keine unterstützte Poseidon D80 Boom"}
+    "error": {
+      "cannot_connect": "Verbindung zur Soundbar nicht möglich",
+      "not_supported": "Das Bluetooth-Gerät stellt kein unterstütztes ULTIMEA-App-Steuerprotokoll bereit"
+    },
+    "abort": {
+      "already_configured": "Diese Soundbar ist bereits eingerichtet",
+      "not_supported": "Dieses Bluetooth-Gerät stellt kein unterstütztes ULTIMEA-App-Steuerprotokoll bereit"
+    }
   },
-  "options": {"step": {"init": {"title": "ULTIMEA-Optionen", "description": "Eine dauerhafte Verbindung liefert Live-Änderungen der Fernbedienung. Im Bedarfsmodus wird die D80 nach der Verzögerung für die ULTIMEA-App freigegeben.", "data": {"keep_connected": "Bluetooth-Verbindung offen halten", "disconnect_delay": "Trennverzögerung im Bedarfsmodus (Sekunden)", "volume_max": "Maximale D80-Lautstärke"}}}},
-  "entity": {"select": {
-    "display_brightness": {"name": "Displayhelligkeit", "state": {"dim": "Gedimmt", "low": "Niedrig", "medium": "Mittel", "normal": "Normal", "high": "Hoch"}},
-    "screen_timeout": {"name": "Display-Abschaltung", "state": {"never": "Nie", "5_seconds": "5 Sekunden", "30_seconds": "30 Sekunden", "60_seconds": "60 Sekunden"}},
-    "prompt_sound": {"name": "Bestätigungston", "state": {"none": "Aus", "low": "Leise", "medium": "Mittel", "high": "Laut"}},
-    "auto_standby": {"name": "Automatischer Standby", "state": {"never": "Nie", "15_minutes": "15 Minuten", "30_minutes": "30 Minuten", "60_minutes": "60 Minuten", "4_hours": "4 Stunden", "8_hours": "8 Stunden", "12_hours": "12 Stunden", "24_hours": "24 Stunden", "48_hours": "48 Stunden"}}
-  }}
+  "options": {
+    "step": {
+      "init": {
+        "title": "ULTIMEA-Optionen",
+        "description": "Eine dauerhafte Verbindung liefert Live-Änderungen der Fernbedienung. Im Bedarfsmodus wird die Soundbar nach der Verzögerung für die ULTIMEA-App freigegeben. Wenn die Soundbar nicht verfügbar ist, versucht Home Assistant nur dieses Gerät in diesem Intervall erneut zu erreichen, bis es wieder antwortet.",
+        "data": {
+          "keep_connected": "Bluetooth-Verbindung offen halten",
+          "disconnect_delay": "Trennverzögerung im Bedarfsmodus (Sekunden)",
+          "volume_max": "Maximale Protokoll-Lautstärke",
+          "heartbeat_interval": "Heartbeat-Intervall bei Nichtverfügbarkeit (Sekunden)"
+        }
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "display_brightness": {
+        "name": "Displayhelligkeit",
+        "state": {
+          "dim": "Gedimmt",
+          "low": "Niedrig",
+          "medium": "Mittel",
+          "normal": "Normal",
+          "high": "Hoch"
+        }
+      },
+      "screen_timeout": {
+        "name": "Display-Abschaltung",
+        "state": {
+          "never": "Nie",
+          "5_seconds": "5 Sekunden",
+          "30_seconds": "30 Sekunden",
+          "60_seconds": "60 Sekunden"
+        }
+      },
+      "prompt_sound": {
+        "name": "Bestätigungston",
+        "state": {
+          "none": "Aus",
+          "low": "Leise",
+          "medium": "Mittel",
+          "high": "Laut"
+        }
+      },
+      "auto_standby": {
+        "name": "Automatischer Standby",
+        "state": {
+          "never": "Nie",
+          "15_minutes": "15 Minuten",
+          "30_minutes": "30 Minuten",
+          "60_minutes": "60 Minuten",
+          "4_hours": "4 Stunden",
+          "8_hours": "8 Stunden",
+          "12_hours": "12 Stunden",
+          "24_hours": "24 Stunden",
+          "48_hours": "48 Stunden"
+        }
+      }
+    }
+  }
 }

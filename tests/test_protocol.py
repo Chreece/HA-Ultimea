@@ -57,3 +57,115 @@ def test_state_query_commands():
     assert protocol.build_command(0x01, 0x08) == bytes.fromhex("aa 00 00 01 08 b3")
     assert protocol.build_command(0x01, 0x0E) == bytes.fromhex("aa 00 00 01 0e b9")
     assert protocol.build_command(0x01, 0x17) == bytes.fromhex("aa 00 00 01 17 c2")
+
+
+def test_public_release_version():
+    import json
+
+    manifest = Path(__file__).parents[1] / "custom_components" / "ultimea" / "manifest.json"
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    assert data["version"] == "2026.09.02"
+    assert data["integration_type"] == "device"
+
+
+def test_bluetooth_advertisement_callback_signature():
+    import ast
+
+    device_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "device.py"
+    )
+    tree = ast.parse(device_py.read_text(encoding="utf-8"))
+    method = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
+        and node.name == "async_handle_advertisement"
+    )
+    assert [arg.arg for arg in method.args.args] == [
+        "self",
+        "service_info",
+        "_change",
+    ]
+
+
+def test_unavailable_heartbeat_is_configurable():
+    const_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "const.py"
+    ).read_text(encoding="utf-8")
+    config_flow_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "config_flow.py"
+    ).read_text(encoding="utf-8")
+    device_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "device.py"
+    ).read_text(encoding="utf-8")
+
+    assert 'CONF_HEARTBEAT_INTERVAL = "heartbeat_interval"' in const_py
+    assert "DEFAULT_HEARTBEAT_INTERVAL = 30" in const_py
+    assert "CONF_HEARTBEAT_INTERVAL" in config_flow_py
+    assert "_async_heartbeat_loop" in device_py
+    assert "INFO_POWER" in device_py
+
+
+
+def test_apk_capability_query_command():
+    assert protocol.build_command(0x00, 0x00) == bytes.fromhex("aa 00 00 00 00 aa")
+
+
+def test_multimodel_transport_constants_present():
+    const_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "const.py"
+    ).read_text(encoding="utf-8")
+    assert "27758d55-bf3a-4ac6-bee5-6259ccb7c9b7" in const_py
+    assert "27758d66-bf3a-4ac6-bee5-6259ccb7c9b7" in const_py
+    assert 'CAP_FETCH_ABILITIES = 0x00' in const_py
+
+
+def test_no_d80_model_allowlist_in_identity_refresh():
+    device_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "device.py"
+    ).read_text(encoding="utf-8")
+    assert 'model != SUPPORTED_MODEL' not in device_py
+    assert "async_detect_capabilities" in device_py
+    assert "_transport_candidates" in device_py
+
+
+def test_apk_profile_contains_embedded_models_and_capabilities():
+    profiles_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "profiles.py"
+    ).read_text(encoding="utf-8")
+    for model in ("Apollo B60", "Apollo B70", "Nova S80", "Poseidon M80", "Poseidon M90V"):
+        assert model in profiles_py
+    for capability in ("hasToneControl", "hasXupMix", "hasSurroundVolume", "hasAuraCast"):
+        assert capability in profiles_py
+
+
+def test_startup_reprobes_capabilities():
+    device_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "device.py"
+    ).read_text(encoding="utf-8")
+    assert "async_refresh_all(reprobe_capabilities=True)" in device_py
+    assert "reprobe_capabilities: bool = False" in device_py

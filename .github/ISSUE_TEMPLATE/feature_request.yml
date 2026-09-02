@@ -1,0 +1,22 @@
+name: Feature request
+description: Suggest a new entity, protocol capability, or integration improvement
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: request
+    attributes:
+      label: Requested feature
+      description: Describe the Home Assistant behavior you want.
+    validations:
+      required: true
+  - type: textarea
+    id: device_ui
+    attributes:
+      label: D80 / ULTIMEA app behavior
+      description: If this is a device control, explain where it exists in the ULTIMEA app or remote.
+  - type: textarea
+    id: protocol
+    attributes:
+      label: Protocol evidence
+      description: If you have a BLE/HCI capture, describe it without posting private identifiers.
