@@ -80,6 +80,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         disconnect_delay=options.get(CONF_DISCONNECT_DELAY, DEFAULT_DISCONNECT_DELAY),
         heartbeat_interval=options.get(CONF_HEARTBEAT_INTERVAL, DEFAULT_HEARTBEAT_INTERVAL),
         preferred_transport=entry.data.get(CONF_TRANSPORT),
+        config_entry=entry,
     )
     device.identity.model = entry.data.get(CONF_MODEL)
     device.identity.serial = entry.data.get(CONF_SERIAL)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Iterable
+from collections.abc import Awaitable, Callable, Coroutine, Iterable
 from contextlib import suppress
 from datetime import datetime, timezone
 import logging
@@ -15,6 +15,7 @@ from bleak_retry_connector import establish_connection
 
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import BluetoothReachabilityIntent
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 
 from .const import (
@@ -100,6 +101,7 @@ class UltimeaDevice:
         disconnect_delay: int = 15,
         heartbeat_interval: int = 30,
         preferred_transport: str | None = None,
+        config_entry: ConfigEntry | None = None,
     ) -> None:
         self.hass = hass
         self.address = address.upper()
@@ -107,6 +109,7 @@ class UltimeaDevice:
         self.keep_connected = keep_connected
         self.disconnect_delay = disconnect_delay
         self.heartbeat_interval = max(10, int(heartbeat_interval))
+        self._config_entry = config_entry
 
         self.identity = UltimeaIdentity()
         self.capabilities = UltimeaCapabilities()
@@ -196,6 +199,35 @@ class UltimeaDevice:
             listener()
 
     @callback
+    def _async_create_runtime_task(
+        self,
+        target: Coroutine[object, object, None],
+        name: str,
+        *,
+        eager_start: bool = True,
+    ) -> asyncio.Task[None]:
+        """Create an integration-lifecycle background task.
+
+        Runtime/recovery tasks must never enter Home Assistant's normal startup
+        task bucket.  Config-entry background tasks are cancelled automatically
+        on unload and, unlike ``hass.async_create_task``, do not block startup or
+        ``async_block_till_done``.  Probe-only device instances have no config
+        entry and use HA's equivalent background-task API.
+        """
+        if self._config_entry is not None:
+            return self._config_entry.async_create_background_task(
+                self.hass,
+                target,
+                name,
+                eager_start=eager_start,
+            )
+        return self.hass.async_create_background_task(
+            target,
+            name,
+            eager_start=eager_start,
+        )
+
+    @callback
     def async_handle_advertisement(
         self,
         service_info: bluetooth.BluetoothServiceInfoBleak,
@@ -225,8 +257,9 @@ class UltimeaDevice:
     def _schedule_connect_and_refresh(self) -> None:
         if self._connect_refresh_task and not self._connect_refresh_task.done():
             return
-        self._connect_refresh_task = self.hass.async_create_task(
-            self._async_connect_and_refresh_background()
+        self._connect_refresh_task = self._async_create_runtime_task(
+            self._async_connect_and_refresh_background(),
+            "ULTIMEA connect and refresh",
         )
 
     async def _async_connect_and_refresh_background(self) -> None:
@@ -257,7 +290,11 @@ class UltimeaDevice:
             self._heartbeat_wakeup.set()
 
         if self._heartbeat_task is None or self._heartbeat_task.done():
-            self._heartbeat_task = self.hass.async_create_task(self._async_heartbeat_loop())
+            self._heartbeat_task = self._async_create_runtime_task(
+                self._async_heartbeat_loop(),
+                "ULTIMEA unavailable heartbeat",
+                eager_start=False,
+            )
 
     async def async_stop(self) -> None:
         """Stop and release the BLE connection."""
@@ -468,7 +505,10 @@ class UltimeaDevice:
             return
         if self._disconnect_task:
             self._disconnect_task.cancel()
-        self._disconnect_task = self.hass.async_create_task(self._async_delayed_disconnect())
+        self._disconnect_task = self._async_create_runtime_task(
+            self._async_delayed_disconnect(),
+            "ULTIMEA delayed disconnect",
+        )
 
     async def _async_delayed_disconnect(self) -> None:
         try:
@@ -873,7 +913,10 @@ class UltimeaDevice:
         if enabled:
             self.state.power = True
             self._async_notify_listeners()
-            self.hass.async_create_task(self._async_delayed_post_power_refresh())
+            self._async_create_runtime_task(
+                self._async_delayed_post_power_refresh(),
+                "ULTIMEA post-power refresh",
+            )
 
     async def _async_delayed_post_power_refresh(self) -> None:
         await asyncio.sleep(0.8)

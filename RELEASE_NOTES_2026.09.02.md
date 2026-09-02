@@ -12,6 +12,7 @@ First public HACS-ready release of local Home Assistant control for **app-capabl
 - Complete state refresh after setup/reconnect plus push updates while connected.
 - Support for Home Assistant Bluetooth adapters and connectable Bluetooth proxies.
 - Compatible with Home Assistant's current two-argument Bluetooth advertisement callback API.
+- Runtime heartbeat/reconnect tasks are tied to the config-entry background lifecycle, so unavailable-device recovery cannot hold Home Assistant startup open.
 - Device serial/firmware metadata and redacted diagnostics.
 - English, German and Greek translations.
 - Local brand assets and HACS/hassfest repository validation.

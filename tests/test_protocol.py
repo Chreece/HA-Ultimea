@@ -64,7 +64,7 @@ def test_public_release_version():
 
     manifest = Path(__file__).parents[1] / "custom_components" / "ultimea" / "manifest.json"
     data = json.loads(manifest.read_text(encoding="utf-8"))
-    assert data["version"] == "2026.09.02"
+    assert data["version"] == "2026.09.03"
     assert data["integration_type"] == "device"
 
 
@@ -169,3 +169,44 @@ def test_startup_reprobes_capabilities():
     ).read_text(encoding="utf-8")
     assert "async_refresh_all(reprobe_capabilities=True)" in device_py
     assert "reprobe_capabilities: bool = False" in device_py
+
+
+def test_runtime_tasks_never_block_home_assistant_startup():
+    device_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "device.py"
+    ).read_text(encoding="utf-8")
+    init_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "__init__.py"
+    ).read_text(encoding="utf-8")
+
+    # Long-lived heartbeat/recovery work must live in HA's background task bucket,
+    # otherwise bootstrap waits for the task and logs a setup timeout.
+    assert "self.hass.async_create_task(" not in device_py
+    assert "async_create_background_task(" in device_py
+    assert "self._config_entry.async_create_background_task(" in device_py
+    assert '"ULTIMEA unavailable heartbeat"' in device_py
+    assert "eager_start=False" in device_py
+    assert "config_entry=entry" in init_py
+
+
+def test_all_runtime_spawn_sites_use_background_task_helper():
+    device_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "device.py"
+    ).read_text(encoding="utf-8")
+    for task_name in (
+        "ULTIMEA connect and refresh",
+        "ULTIMEA unavailable heartbeat",
+        "ULTIMEA delayed disconnect",
+        "ULTIMEA post-power refresh",
+    ):
+        assert task_name in device_py
+    assert device_py.count("_async_create_runtime_task(") >= 5

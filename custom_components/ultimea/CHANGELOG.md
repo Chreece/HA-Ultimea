@@ -30,6 +30,7 @@ First public HACS-ready release.
 
 ### Fixed since development builds
 
+- Prevent the unavailable heartbeat, advertisement-replay reconnects, delayed disconnects and post-power refreshes from entering Home Assistant's startup task bucket; all runtime-spawned work now uses config-entry background tasks and cannot block bootstrap.
 - Populate runtime states on setup/reconnect instead of leaving entities unknown.
 - Avoid false service failures when a control command succeeds but its immediate notification ACK is missed.
 - Prevent already-configured soundbars from being rediscovered as a separate MAC-address entry.
