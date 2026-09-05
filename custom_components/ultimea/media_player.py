@@ -19,6 +19,7 @@ from . import UltimeaRuntimeData
 from .const import Feature, SoundMode, Source
 from .device import UltimeaError
 from .entity import UltimeaEntity
+from .eq_style import identify_style_preset
 
 SOURCE_NAMES = {
     Source.EARC: "eARC",
@@ -37,6 +38,7 @@ SOUND_MODE_NAMES = {
     SoundMode.NIGHT: "Night",
     SoundMode.GAME: "Game",
     SoundMode.CUSTOM: "Custom EQ",
+    SoundMode.STYLE: "Style",
 }
 NAME_TO_SOUND_MODE = {value: key for key, value in SOUND_MODE_NAMES.items()}
 
@@ -64,6 +66,7 @@ EQ_BADGES = {
     SoundMode.NIGHT: "NGT",
     SoundMode.GAME: "GAME",
     SoundMode.CUSTOM: "EQ",
+    SoundMode.STYLE: "STY",
 }
 EQ_ACCENTS = {
     SoundMode.MOVIE: "#ec407a",
@@ -73,6 +76,7 @@ EQ_ACCENTS = {
     SoundMode.NIGHT: "#5c6bc0",
     SoundMode.GAME: "#ffa726",
     SoundMode.CUSTOM: "#00acc1",
+    SoundMode.STYLE: "#ab47bc",
 }
 
 
@@ -149,10 +153,12 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         names = [
             name
             for mode, name in SOUND_MODE_NAMES.items()
-            if mode is not SoundMode.CUSTOM
+            if mode not in (SoundMode.CUSTOM, SoundMode.STYLE)
         ]
         if self.device.supports(Feature.EQUALIZER):
             names.append(SOUND_MODE_NAMES[SoundMode.CUSTOM])
+        if self.device.supports(Feature.STYLE):
+            names.append(SOUND_MODE_NAMES[SoundMode.STYLE])
         return names
 
     @property
@@ -210,6 +216,10 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         ):
             if value is not None:
                 attrs[key] = value
+        if self.device.state.sound_mode is SoundMode.STYLE:
+            gains = self.device.state.eq_band_gains_tenths_db
+            if self.device.state.eq_profile_id == 0x08 and gains is not None:
+                attrs["style_preset"] = identify_style_preset(gains) or "custom"
         if self.device.transport:
             attrs["ble_transport"] = self.device.transport
         if self.device.identity.profile:

@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.05.1-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.05.4-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -36,7 +36,7 @@ The integration is not a D80 model-name allow-list. It discovers likely ULTIMEA 
 - Absolute volume and volume step
 - Mute/unmute
 - Sources: **eARC, HDMI, Optical, AUX, Bluetooth, USB**
-- Sound modes: **Movie, Music, Voice, Sport, Night, Game, Custom EQ**
+- Sound modes: **Movie, Music, Voice, Sport, Night, Game, Custom EQ, Style**
 
 ### Advanced audio
 
@@ -55,6 +55,30 @@ The integration is not a D80 model-name allow-list. It discovers likely ULTIMEA 
 - EQ range: **-6 dB … +6 dB**
 - The integration preserves the other nine EQ bands when changing one band.
 - EQ controls are available while the hardware-verified Custom EQ profile `0x07` is active.
+
+### Custom Style
+
+Select **Style** in the media-player sound-mode selector to load the bar's stored
+profile `0x08`. Five buttons apply the captured **Style Bass**, **Style Rock**,
+**Style Pop**, **Style Classical**, and **Style Reset** curves. Each action selects
+Style and requires the complete 41-byte device echo; Reset is the flat center of
+Style, **not** a factory reset. The corner curves come from the later labelled
+capture, not the earlier unnamed A/B samples.
+
+Ten **Style gain sensors** in Diagnostics show the actual confirmed curve in dB,
+including half-decibel values. They are read-only. The existing Custom EQ sliders
+remain writable only in Custom EQ (profile `0x07`). `style_preset` on the media
+player identifies an exact captured curve, or `custom` for another confirmed curve.
+
+Style values are cleared on disconnect/mode change and are not restored from a
+remembered button press. After HA has started or the bar reconnects, the
+integration reads current state first; it reads profile `0x08` only when a fresh
+mode response identifies it as active. If the device does not provide that
+confirmation, Style values remain unavailable until an explicit Style action or
+a complete profile notification confirms them. Background refresh never selects
+Style or resets its curve. There are no guessed continuous X/Y controls.
+
+See [Style capture evidence](docs/D80_STYLE.md) for the exact curves and limits.
 
 ### Settings
 
@@ -88,7 +112,7 @@ Every new BLE protocol session establishes safe-code state before normal non-boo
 
 Home Assistant does **not** connect to the soundbar while HA is still booting. The first complete identity/capability/state refresh is scheduled after `homeassistant_started`; integration reloads run it immediately when HA is already running.
 
-After a reconnect/recovery the integration refreshes every exposed state, including X-Upmix. Custom EQ is read back automatically only if profile `0x07` is already active, so a background refresh never changes the user's sound mode merely to obtain EQ values.
+After a reconnect/recovery the integration refreshes every exposed state, including X-Upmix. Custom EQ/Style readback requires fresh current-mode confirmation for profile `0x07`/`0x08`, so background refresh never selects a different profile merely to obtain EQ values.
 
 While a persistent BLE connection is open, valid ULTIMEA notifications update entities without polling. In on-demand mode the connection is released after the configured delay.
 
@@ -144,12 +168,12 @@ Not currently exposed:
 - Mid/Midrange
 - Treble
 - Surround level
-- Custom Style profile `0x08` as a persistent sound mode
+- Continuous Custom Style XY interpolation
 - Current incoming HDMI/eARC codec/format
 - Firmware OTA
 - Responsive but still unnamed INFO commands `01:0B`, `01:10`, `01:11`, `01:12`
 
-Profile `0x08` is proven to be the D80 app's **Custom Style** XY mode and its 41-byte curve format is decoded, but an authoritative restart/reconnect getter identifying active Style state has not been proven. Bass/Mid/Treble/Surround remain outside the proven ordinary D80 BLE GET+SET surface. These are intentionally left unexposed rather than guessed.
+Style mode, captured corner actions and confirmed curve readback are exposed. Its continuous XY interpolation is not reconstructed. The separate physical-remote Bass/Mid/Treble/Surround controls remain outside the proven ordinary D80 BLE GET+SET surface and are not guessed.
 
 ## Protocol documentation
 

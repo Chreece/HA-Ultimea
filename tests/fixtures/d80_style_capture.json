@@ -1,0 +1,102 @@
+{
+  "source_file": "d80-postaction-decoded-20260905-110322.json",
+  "source_sha256": "95bce0fc53c038d896490bad85707d4d992b72189c8d5f9a766721be66fe43ad",
+  "events": [
+    {
+      "label": "STYLE_BASS_CORNER",
+      "direction": "TX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0037003e0032007d001900fa000000f4010000e803ddffd007ceffa00fceff401f0000803e0000",
+      "frame_hex": "aa29000204081f0037003e0032007d001900fa000000f4010000e803ddffd007ceffa00fceff401f0000803e000007"
+    },
+    {
+      "label": "STYLE_BASS_CORNER",
+      "direction": "RX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0037003e0032007d001900fa000000f4010000e803ddffd007ceffa00fceff401f0000803e0000",
+      "frame_hex": "bb29000204081f0037003e0032007d001900fa000000f4010000e803ddffd007ceffa00fceff401f0000803e000007"
+    },
+    {
+      "label": "STYLE_ROCK_CORNER",
+      "direction": "TX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0032003e0023007d00e2fffa003200f401ecffe8030f00d0072300a00f2800401f2d00803e2d00",
+      "frame_hex": "aa29000204081f0032003e0023007d00e2fffa003200f401ecffe8030f00d0072300a00f2800401f2d00803e2d0016"
+    },
+    {
+      "label": "STYLE_ROCK_CORNER",
+      "direction": "RX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0032003e0023007d00e2fffa003200f401ecffe8030f00d0072300a00f2800401f2d00803e2d00",
+      "frame_hex": "bb29000204081f0032003e0023007d00e2fffa003200f401ecffe8030f00d0072300a00f2800401f2d00803e2d0016"
+    },
+    {
+      "label": "STYLE_POP_CORNER",
+      "direction": "TX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0028003e0023007d001400fa000000f401ecffe8030000d0071900a00f2300401f2300803e2800",
+      "frame_hex": "aa29000204081f0028003e0023007d001400fa000000f401ecffe8030000d0071900a00f2300401f2300803e2800e0"
+    },
+    {
+      "label": "STYLE_POP_CORNER",
+      "direction": "RX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0028003e0023007d001400fa000000f401ecffe8030000d0071900a00f2300401f2300803e2800",
+      "frame_hex": "bb29000204081f0028003e0023007d001400fa000000f401ecffe8030000d0071900a00f2300401f2300803e2800e0"
+    },
+    {
+      "label": "STYLE_CLASSICAL_CORNER",
+      "direction": "TX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0000003e0000007d000000fa002300f4012300e8032300d0070000a00fecff401fe7ff803ee7ff",
+      "frame_hex": "aa29000204081f0000003e0000007d000000fa002300f4012300e8032300d0070000a00fecff401fe7ff803ee7ff2f"
+    },
+    {
+      "label": "STYLE_CLASSICAL_CORNER",
+      "direction": "RX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0000003e0000007d000000fa002300f4012300e8032300d0070000a00fecff401fe7ff803ee7ff",
+      "frame_hex": "bb29000204081f0000003e0000007d000000fa002300f4012300e8032300d0070000a00fecff401fe7ff803ee7ff2f"
+    },
+    {
+      "label": "STYLE_RESET_CENTER_2",
+      "direction": "TX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0000003e0000007d000000fa000000f4010000e8030000d0070000a00f0000401f0000803e0000",
+      "frame_hex": "aa29000204081f0000003e0000007d000000fa000000f4010000e8030000d0070000a00f0000401f0000803e00000f"
+    },
+    {
+      "label": "STYLE_RESET_CENTER_2",
+      "direction": "RX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0000003e0000007d000000fa000000f4010000e8030000d0070000a00f0000401f0000803e0000",
+      "frame_hex": "bb29000204081f0000003e0000007d000000fa000000f4010000e8030000d0070000a00f0000401f0000803e00000f"
+    },
+    {
+      "label": "CUSTOM_STYLE_TAB",
+      "direction": "TX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "08",
+      "frame_hex": "aa0100020408b8"
+    },
+    {
+      "label": "CUSTOM_STYLE_TAB",
+      "direction": "RX",
+      "group": 2,
+      "command": 4,
+      "data_hex": "081f0000003e0000007d000000fa000000f4010000e8030000d0070000a00f0000401f0000803e0000",
+      "frame_hex": "bb29000204081f0000003e0000007d000000fa000000f4010000e8030000d0070000a00f0000401f0000803e00000f"
+    }
+  ]
+}

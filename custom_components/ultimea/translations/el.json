@@ -44,6 +44,7 @@
     },
     "number": {"equalizer_band": {"name": "EQ {frequency}"}},
     "switch": {"xupmix": {"name": "X-Upmix"}},
-    "sensor": {"capabilities": {"name": "Δυνατότητες"}}
+    "sensor": {"capabilities": {"name": "Δυνατότητες"}, "style_band": {"name": "Στυλ {frequency}"}},
+    "button": {"style_reset": {"name": "Επαναφορά στυλ"}, "style_bass": {"name": "Στυλ Bass"}, "style_rock": {"name": "Στυλ Rock"}, "style_pop": {"name": "Στυλ Pop"}, "style_classical": {"name": "Στυλ Classical"}}
   }
 }

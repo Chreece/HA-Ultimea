@@ -97,6 +97,7 @@ class Feature(StrEnum):
     AUTO_STANDBY = "auto_standby"
     XUPMIX = "xupmix"
     EQUALIZER = "equalizer"
+    STYLE = "style"
 
 
 class Source(StrEnum):
@@ -141,6 +142,7 @@ class SoundMode(StrEnum):
     NIGHT = "night"
     GAME = "game"
     CUSTOM = "custom"
+    STYLE = "style"
 
 
 SOUND_MODE_TO_VALUE: dict[SoundMode, int] = {
@@ -151,6 +153,7 @@ SOUND_MODE_TO_VALUE: dict[SoundMode, int] = {
     SoundMode.NIGHT: 0x05,
     SoundMode.GAME: 0x06,
     SoundMode.CUSTOM: 0x07,
+    SoundMode.STYLE: 0x08,
 }
 VALUE_TO_SOUND_MODE = {value: key for key, value in SOUND_MODE_TO_VALUE.items()}
 

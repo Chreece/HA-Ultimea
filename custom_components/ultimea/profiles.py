@@ -40,6 +40,7 @@ VERIFIED_D80_FEATURES = frozenset(
         Feature.AUTO_STANDBY,
         Feature.XUPMIX,
         Feature.EQUALIZER,
+        Feature.STYLE,
     }
 )
 

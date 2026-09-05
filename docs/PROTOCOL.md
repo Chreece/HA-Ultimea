@@ -1,6 +1,6 @@
 # Poseidon D80 Boom BLE protocol notes
 
-Protocol documentation for ULTIMEA integration release `2026.09.05.1`.
+Protocol documentation for ULTIMEA integration release `2026.09.05.4`.
 
 The mappings below were recovered from the official ULTIMEA Android application and validated against a physical Poseidon D80 Boom. The integration remains capability-driven for other app-capable ULTIMEA models; D80-specific advanced controls are enabled only by the verified D80 profile.
 
@@ -118,7 +118,7 @@ Frequencies:
 Gain range captured from the app is `-60..+60` tenths dB = `-6..+6 dB`.
 
 - Profile `0x07` = **Custom Equalizer**. A one-byte `02:04 07` request returns the stored 41-byte profile, and full writes are echoed exactly by the D80. This is exposed by the integration.
-- Profile `0x08` = **Custom Style** (the app's XY Style pad). The 41-byte format is proven, but an authoritative restart/reconnect getter for the active Style state has not been proven, so it is decoded but not exposed as a persistent HA sound mode.
+- Profile `0x08` = **Custom Style** (the app's XY Style pad). Selection `02:04 08` returns the stored complete curve. The labelled later capture proves Bass/Rock/Pop/Classical corner writes and the flat Reset; see [D80_STYLE.md](D80_STYLE.md). Actions are exposed without pretending a preset survived reconnect. A background profile-08 read requires a fresh current-mode response `08`; the integration does not assume every D80 firmware supplies it and does not infer it from a cached curve.
 
 ## Capability block `00:00`
 
