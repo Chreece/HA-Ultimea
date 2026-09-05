@@ -9,6 +9,7 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import CoreState, Event, HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from .const import (
     CONF_ABILITY_FLAGS, CONF_CAPABILITIES, CONF_DISCONNECT_DELAY, CONF_FIRMWARE,
@@ -60,6 +61,21 @@ def _store_runtime_probe(entry: ConfigEntry, device: UltimeaDevice) -> None:
         device.hass.config_entries.async_update_entry(entry, data=merged)
 
 
+def _remove_legacy_xupmix_sensor(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Remove the obsolete read-only X-Upmix sensor kept by old entity registries."""
+    registry = er.async_get(hass)
+    for registry_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if (
+            registry_entry.entity_id.startswith("sensor.")
+            and registry_entry.unique_id.endswith("_xupmix")
+        ):
+            _LOGGER.info(
+                "Removing obsolete ULTIMEA X-Upmix sensor %s; the switch now owns state and control",
+                registry_entry.entity_id,
+            )
+            registry.async_remove(registry_entry.entity_id)
+
+
 async def _async_post_start_refresh(entry: ConfigEntry, device: UltimeaDevice) -> None:
     try:
         await device.async_post_start(reprobe_capabilities=True)
@@ -81,6 +97,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
         if conflict is None:
             hass.config_entries.async_update_entry(entry, unique_id=address)
+
+    # Old development builds exposed X-Upmix twice: a read-only sensor plus the
+    # real switch. Current code only creates the switch, so clean the orphaned
+    # sensor registry entry automatically on setup/reload.
+    _remove_legacy_xupmix_sensor(hass, entry)
 
     device = UltimeaDevice(
         hass,
