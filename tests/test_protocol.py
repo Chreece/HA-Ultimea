@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import importlib.util
 from pathlib import Path
 import sys
@@ -59,25 +60,65 @@ def test_state_query_commands():
     assert protocol.build_command(0x01, 0x17) == bytes.fromhex("aa 00 00 01 17 c2")
 
 
+def test_safe_code_known_hardware_pairs():
+    pairs = (
+        (0x13, 0xB7),
+        (0xEC, 0x10),
+        (0x80, 0x24),
+        (0x7F, 0x9A),
+        (0x6E, 0xA6),
+        (0x91, 0x67),
+        (0xC2, 0xFC),
+        (0x3D, 0x26),
+    )
+    for first, second in pairs:
+        assert protocol.safe_code_byte(first) == second
+        assert protocol.build_safe_code_pair(first) == bytes([first, second])
+        assert protocol.validate_safe_code_pair(bytes([first, second]))
+
+
+def test_safe_code_full_captured_handshakes():
+    captures = (
+        (bytes.fromhex("13 b7"), bytes.fromhex("ec 10")),
+        (bytes.fromhex("80 24"), bytes.fromhex("7f 9a")),
+        (bytes.fromhex("6e a6"), bytes.fromhex("91 67")),
+        (bytes.fromhex("c2 fc"), bytes.fromhex("3d 26")),
+    )
+    for request, response in captures:
+        assert protocol.validate_safe_code_pair(request)
+        assert protocol.validate_safe_code_pair(response)
+        assert protocol.safe_code_response_complements(request[0], response)
+
+
+def test_safe_code_command_frame_matches_capture():
+    assert protocol.build_command(
+        0x00, protocol.SAFE_CODE_COMMAND, protocol.build_safe_code_pair(0x6E)
+    ) == bytes.fromhex("aa 02 00 00 01 6e a6 bf")
+
+
+def test_safe_code_pair_validation_is_independent_of_complement_relation():
+    response = protocol.build_safe_code_pair(0x80)
+    assert protocol.validate_safe_code_pair(response)
+    assert not protocol.safe_code_response_complements(0x6E, response)
+
+
 def test_public_release_version():
     import json
 
     manifest = Path(__file__).parents[1] / "custom_components" / "ultimea" / "manifest.json"
     data = json.loads(manifest.read_text(encoding="utf-8"))
-    assert data["version"] == "2026.09.03"
+    assert data["version"] == "2026.09.05"
     assert data["integration_type"] == "device"
 
 
 def test_bluetooth_advertisement_callback_signature():
-    import ast
-
-    device_py = (
+    runtime_py = (
         Path(__file__).parents[1]
         / "custom_components"
         / "ultimea"
-        / "device.py"
+        / "runtime.py"
     )
-    tree = ast.parse(device_py.read_text(encoding="utf-8"))
+    tree = ast.parse(runtime_py.read_text(encoding="utf-8"))
     method = next(
         node
         for node in ast.walk(tree)
@@ -116,7 +157,6 @@ def test_unavailable_heartbeat_is_configurable():
     assert "CONF_HEARTBEAT_INTERVAL" in config_flow_py
     assert "_async_heartbeat_loop" in device_py
     assert "INFO_POWER" in device_py
-
 
 
 def test_apk_capability_query_command():
@@ -160,15 +200,69 @@ def test_apk_profile_contains_embedded_models_and_capabilities():
         assert capability in profiles_py
 
 
-def test_startup_reprobes_capabilities():
+def test_initial_full_refresh_is_deferred_until_ha_started():
+    runtime_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "runtime.py"
+    ).read_text(encoding="utf-8")
+    init_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "__init__.py"
+    ).read_text(encoding="utf-8")
+
+    tree = ast.parse(runtime_py)
+    start_method = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_start"
+    )
+    start_source = ast.get_source_segment(runtime_py, start_method) or ""
+    assert "async_ensure_connected" not in start_source
+    assert "async_refresh_all" not in start_source
+    assert "async_post_start" in runtime_py
+    assert "async_refresh_all(reprobe_capabilities=reprobe_capabilities)" in runtime_py
+    assert "EVENT_HOMEASSISTANT_STARTED" in init_py
+    assert "CoreState.running" in init_py
+    assert '"ULTIMEA post-start full status refresh"' in init_py
+
+
+def test_reconnect_transition_schedules_full_state_refresh():
+    runtime_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "runtime.py"
+    ).read_text(encoding="utf-8")
     device_py = (
         Path(__file__).parents[1]
         / "custom_components"
         / "ultimea"
         / "device.py"
     ).read_text(encoding="utf-8")
-    assert "async_refresh_all(reprobe_capabilities=True)" in device_py
-    assert "reprobe_capabilities: bool = False" in device_py
+
+    assert "if self.keep_connected or not was_available:" in runtime_py
+    assert "self._schedule_connect_and_refresh()" in runtime_py
+    assert "_async_connect_and_refresh_background" in device_py
+    assert "await self.async_refresh_all()" in device_py
+    assert "await self.async_refresh_state()" in device_py
+
+
+def test_safe_code_session_precedes_non_bootstrap_commands():
+    runtime_py = (
+        Path(__file__).parents[1]
+        / "custom_components"
+        / "ultimea"
+        / "runtime.py"
+    ).read_text(encoding="utf-8")
+    assert "await self._async_safe_code_handshake()" in runtime_py
+    assert "validate_safe_code_pair(response)" in runtime_py
+    assert "safe_code_response_complements" in runtime_py
+    assert "INFO_PROTOCOL" in runtime_py
+    assert "GROUP_CAPABILITIES" in runtime_py
 
 
 def test_runtime_tasks_never_block_home_assistant_startup():
@@ -185,14 +279,13 @@ def test_runtime_tasks_never_block_home_assistant_startup():
         / "__init__.py"
     ).read_text(encoding="utf-8")
 
-    # Long-lived heartbeat/recovery work must live in HA's background task bucket,
-    # otherwise bootstrap waits for the task and logs a setup timeout.
     assert "self.hass.async_create_task(" not in device_py
     assert "async_create_background_task(" in device_py
     assert "self._config_entry.async_create_background_task(" in device_py
     assert '"ULTIMEA unavailable heartbeat"' in device_py
     assert "eager_start=False" in device_py
     assert "config_entry=entry" in init_py
+    assert "entry.async_create_background_task(" in init_py
 
 
 def test_all_runtime_spawn_sites_use_background_task_helper():

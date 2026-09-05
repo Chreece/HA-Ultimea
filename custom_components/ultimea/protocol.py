@@ -10,11 +10,13 @@ command and notification frames.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections.abc import Iterator
+from dataclasses import dataclass
+import hashlib
 
 COMMAND_HEADER = 0xAA
 RESPONSE_HEADER = 0xBB
+SAFE_CODE_COMMAND = 0x01
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +51,41 @@ def build_command(group: int, command: int, data: bytes = b"") -> bytes:
             checksum(group, command, data),
         ]
     )
+
+
+def safe_code_byte(value: int) -> int:
+    """Return the APK/firmware integrity byte for one safe-code data byte.
+
+    The official app hashes a single byte with MD5, takes the final digest byte,
+    adds five and truncates to eight bits. MD5 is used here only as a protocol
+    transform, not for a security decision.
+    """
+    if not 0 <= value <= 0xFF:
+        raise ValueError("safe-code data byte must be between 0 and 255")
+    digest = hashlib.md5(bytes([value]), usedforsecurity=False).digest()
+    return (digest[-1] + 5) & 0xFF
+
+
+def build_safe_code_pair(value: int) -> bytes:
+    """Build the two-byte APP->firmware safe-code payload."""
+    return bytes([value, safe_code_byte(value)])
+
+
+def validate_safe_code_pair(data: bytes) -> bool:
+    """Validate one firmware/app safe-code pair independently."""
+    return len(data) == 2 and data[1] == safe_code_byte(data[0])
+
+
+def safe_code_response_complements(request_value: int, response: bytes) -> bool:
+    """Return whether firmware used the observed complement challenge relation.
+
+    All captured D80 handshakes use ``response[0] == request_value ^ 0xff``.
+    This helper is intentionally separate from pair validation because static
+    analysis did not prove that the official app requires this relation.
+    """
+    if not 0 <= request_value <= 0xFF:
+        raise ValueError("safe-code request byte must be between 0 and 255")
+    return len(response) == 2 and response[0] == (request_value ^ 0xFF)
 
 
 def parse_frame(payload: bytes, offset: int = 0) -> UltimeaFrame | None:

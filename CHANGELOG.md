@@ -4,6 +4,22 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD`.
 
+## 2026.09.05
+
+### Added
+
+- Added the official `00:01` safe-code session exchange recovered from the ULTIMEA app and validated against the Poseidon D80 Boom.
+- Safe-code payload generation now uses the proven one-byte MD5 transform: final digest byte + 5, truncated to 8 bits.
+- Firmware safe-code responses are pair-integrity validated before normal commands continue.
+- The observed D80 `RX[0] == TX[0] ^ 0xFF` relation is recorded as a diagnostic only; it is not required because the app-side complement check was not statically proven.
+
+### Changed
+
+- Home Assistant startup no longer performs ULTIMEA BLE connections or status polling while HA is still booting.
+- The first complete identity/capability/state refresh is scheduled only after `homeassistant_started` (or immediately on an integration reload when HA is already running).
+- When a soundbar becomes available again after being unavailable, the integration reconnects once and refreshes all capability-proven statuses, including on-demand connection mode.
+- Every new BLE protocol session establishes safe-code state before non-bootstrap commands; the state is reset on disconnect and when the active APK transport changes.
+
 ## 2026.09.02
 
 First public HACS-ready release.

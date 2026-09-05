@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import CONF_ADDRESS, Platform
-from homeassistant.core import HomeAssistant
+from homeassistant.const import CONF_ADDRESS, EVENT_HOMEASSISTANT_STARTED, Platform
+from homeassistant.core import CoreState, Event, HomeAssistant, callback
 
 from .const import (
     CONF_ABILITY_FLAGS,
@@ -28,9 +29,12 @@ from .const import (
     DEFAULT_HEARTBEAT_INTERVAL,
     DEFAULT_VOLUME_MAX,
 )
-from .device import UltimeaDevice
+from .device import UltimeaError
+from .runtime import UltimeaDevice
 
 PLATFORMS = [Platform.MEDIA_PLAYER, Platform.SELECT]
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -53,6 +57,26 @@ def _capability_updates(device: UltimeaDevice) -> dict:
         CONF_STANDBY_OPTIONS: list(device.capabilities.standby_options),
         CONF_TRANSPORT: device.transport,
     }
+
+
+def _store_runtime_probe(entry: ConfigEntry, device: UltimeaDevice) -> None:
+    """Persist successful identity/capability data without overwriting with None."""
+    if not device.available:
+        return
+    fresh = _capability_updates(device)
+    merged = {**entry.data, **{k: v for k, v in fresh.items() if v is not None}}
+    if merged != dict(entry.data):
+        device.hass.config_entries.async_update_entry(entry, data=merged)
+
+
+async def _async_post_start_refresh(entry: ConfigEntry, device: UltimeaDevice) -> None:
+    """Perform the first full device refresh only after Home Assistant is running."""
+    try:
+        await device.async_post_start(reprobe_capabilities=True)
+    except UltimeaError as err:
+        _LOGGER.debug("Post-start ULTIMEA full status refresh failed: %s", err)
+        return
+    _store_runtime_probe(entry, device)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -120,15 +144,36 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
 
+    # This method only restores cached reachability. It deliberately performs no
+    # BLE connection/query while Home Assistant is still starting.
     await device.async_start()
 
-    if device.available:
-        fresh = _capability_updates(device)
-        merged = {**entry.data, **{k: v for k, v in fresh.items() if v is not None}}
-        if merged != dict(entry.data):
-            hass.config_entries.async_update_entry(entry, data=merged)
+    @callback
+    def _schedule_post_start_refresh(_event: Event | None = None) -> None:
+        if device._stopping:  # lifecycle guard; task itself is config-entry owned
+            return
+        entry.async_create_background_task(
+            hass,
+            _async_post_start_refresh(entry, device),
+            "ULTIMEA post-start full status refresh",
+        )
+
+    already_running = hass.state is CoreState.running
+    if not already_running:
+        entry.async_on_unload(
+            hass.bus.async_listen_once(
+                EVENT_HOMEASSISTANT_STARTED,
+                _schedule_post_start_refresh,
+            )
+        )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Reloading the integration while HA is already running is not a restart, so
+    # there is no reason to wait for an event that has already happened.
+    if already_running:
+        _schedule_post_start_refresh()
+
     return True
 
 
