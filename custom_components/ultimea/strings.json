@@ -4,82 +4,46 @@
     "step": {
       "user": {
         "title": "Add ULTIMEA soundbar",
-        "description": "Select a discovered Poseidon D80 Boom or enter its BLE address.",
-        "data": {
-          "address": "Bluetooth address"
-        }
+        "description": "Select a discovered ULTIMEA Bluetooth soundbar or enter its BLE address. Setup probes the app protocol and only exposes capabilities the device answers safely.",
+        "data": {"address": "Bluetooth address"}
       },
       "bluetooth_confirm": {
         "title": "Add {name}",
-        "description": "Home Assistant will connect once to verify that this is a Poseidon D80 Boom before adding it."
+        "description": "Home Assistant will connect once to identify {name}, select the ULTIMEA app transport, and probe supported capabilities before adding it."
       }
     },
     "error": {
       "cannot_connect": "Could not connect to the soundbar",
-      "not_supported": "The Bluetooth device is not a supported Poseidon D80 Boom"
+      "not_supported": "The Bluetooth device did not expose a supported ULTIMEA app-control protocol"
     },
     "abort": {
       "already_configured": "This soundbar is already configured",
-      "not_supported": "This ULTIMEA Bluetooth device is not a supported Poseidon D80 Boom"
+      "not_supported": "This Bluetooth device did not expose a supported ULTIMEA app-control protocol"
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "ULTIMEA options",
-        "description": "A persistent connection provides live physical-remote updates. On-demand mode releases the D80 for the ULTIMEA phone app after the delay.",
+        "description": "A persistent connection provides live physical-remote updates. On-demand mode releases the soundbar for the ULTIMEA phone app after the delay.",
         "data": {
           "keep_connected": "Keep Bluetooth connection open",
           "disconnect_delay": "On-demand disconnect delay (seconds)",
-          "volume_max": "Maximum D80 volume"
+          "volume_max": "Maximum protocol volume",
+          "heartbeat_interval": "Unavailable heartbeat interval (seconds)"
         }
       }
     }
   },
   "entity": {
     "select": {
-      "display_brightness": {
-        "name": "Display brightness",
-        "state": {
-          "dim": "Dim",
-          "low": "Low",
-          "medium": "Medium",
-          "normal": "Normal",
-          "high": "High"
-        }
-      },
-      "screen_timeout": {
-        "name": "Screen timeout",
-        "state": {
-          "never": "Never",
-          "5_seconds": "5 seconds",
-          "30_seconds": "30 seconds",
-          "60_seconds": "60 seconds"
-        }
-      },
-      "prompt_sound": {
-        "name": "Prompt sound",
-        "state": {
-          "none": "None",
-          "low": "Low",
-          "medium": "Medium",
-          "high": "High"
-        }
-      },
-      "auto_standby": {
-        "name": "Automatic standby",
-        "state": {
-          "never": "Never",
-          "15_minutes": "15 minutes",
-          "30_minutes": "30 minutes",
-          "60_minutes": "60 minutes",
-          "4_hours": "4 hours",
-          "8_hours": "8 hours",
-          "12_hours": "12 hours",
-          "24_hours": "24 hours",
-          "48_hours": "48 hours"
-        }
-      }
-    }
+      "display_brightness": {"name": "Display brightness", "state": {"dim": "Dim", "low": "Low", "medium": "Medium", "normal": "Normal", "high": "High"}},
+      "screen_timeout": {"name": "Screen timeout", "state": {"never": "Never", "5_seconds": "5 seconds", "30_seconds": "30 seconds", "60_seconds": "60 seconds"}},
+      "prompt_sound": {"name": "Prompt sound", "state": {"none": "None", "low": "Low", "medium": "Medium", "high": "High"}},
+      "auto_standby": {"name": "Automatic standby", "state": {"never": "Never", "15_minutes": "15 minutes", "30_minutes": "30 minutes", "60_minutes": "60 minutes", "4_hours": "4 hours", "8_hours": "8 hours", "12_hours": "12 hours", "24_hours": "24 hours", "48_hours": "48 hours"}}
+    },
+    "number": {"equalizer_band": {"name": "EQ {frequency}"}},
+    "switch": {"xupmix": {"name": "X-Upmix"}},
+    "sensor": {"capabilities": {"name": "Capabilities"}}
   }
 }

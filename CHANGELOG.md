@@ -2,7 +2,28 @@
 
 All notable changes to this project are documented here.
 
-The project uses calendar versioning for public releases: `YYYY.MM.DD`.
+The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
+
+## 2026.09.05.1
+
+### Added
+
+- Added ten hardware-verified Poseidon D80 Boom Custom EQ `number` entities for 31/62/125/250/500 Hz and 1/2/4/8/16 kHz, with the app/device `-6…+6 dB` range.
+- Added `Custom EQ` as a media-player sound mode backed by profile `0x07` and the D80's exact 41-byte EQ payload/readback path.
+- Added a hardware-verified X-Upmix `switch`: SET uses `02:16 00/01` and state verification uses authoritative INFO `01:18`.
+- Added a diagnostic Capabilities sensor that exposes the recovered semantic `fetchAbilities` field names while retaining the raw capability bytes.
+
+### Fixed
+
+- Restored the hardware-proven D80 INFO getter map: source `01:06`, volume `01:07`, sound mode `01:08`, prompt `01:0A`, screen timeout `01:0C`, power `01:0D`, mute `01:0E`, brightness `01:0F`, standby `01:17`, X-Upmix `01:18`.
+- Corrected source GET decoding so eARC is `00` on INFO while eARC SET remains `10`.
+- Corrected mute INFO decoding to the D80 wire convention `00=muted`, `01=unmuted`.
+- After a post-start capability re-probe, a complete state refresh now runs so newly exposed entities are populated immediately.
+
+### Evidence guardrails
+
+- Custom Style profile `0x08` is decoded as a valid 41-byte curve format but is not exposed as a persistent sound mode because an authoritative restart/reconnect active-mode getter has not been proven.
+- Bass, Mid, Treble and Surround are still not exposed because the D80 BLE GET+SET state path has not been proven for those physical-remote functions.
 
 ## 2026.09.05
 
@@ -55,5 +76,5 @@ First public HACS-ready release.
 
 ### Not yet implemented
 
-- Bass, mid, treble, surround, X-Upmix and advanced EQ controls.
+- Bass, mid, treble and surround level.
 - Firmware OTA.

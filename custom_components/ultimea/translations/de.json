@@ -5,9 +5,7 @@
       "user": {
         "title": "ULTIMEA-Soundbar hinzufügen",
         "description": "Wähle eine gefundene ULTIMEA-Bluetooth-Soundbar aus oder gib ihre BLE-Adresse ein. Bei der Einrichtung werden Protokoll und sicher abfragbare Funktionen automatisch erkannt.",
-        "data": {
-          "address": "Bluetooth-Adresse"
-        }
+        "data": {"address": "Bluetooth-Adresse"}
       },
       "bluetooth_confirm": {
         "title": "{name} hinzufügen",
@@ -27,7 +25,7 @@
     "step": {
       "init": {
         "title": "ULTIMEA-Optionen",
-        "description": "Eine dauerhafte Verbindung liefert Live-Änderungen der Fernbedienung. Im Bedarfsmodus wird die Soundbar nach der Verzögerung für die ULTIMEA-App freigegeben. Wenn die Soundbar nicht verfügbar ist, versucht Home Assistant nur dieses Gerät in diesem Intervall erneut zu erreichen, bis es wieder antwortet.",
+        "description": "Eine dauerhafte Verbindung liefert Live-Änderungen der Fernbedienung. Im Bedarfsmodus wird die Soundbar nach der Verzögerung für die ULTIMEA-App freigegeben.",
         "data": {
           "keep_connected": "Bluetooth-Verbindung offen halten",
           "disconnect_delay": "Trennverzögerung im Bedarfsmodus (Sekunden)",
@@ -39,48 +37,13 @@
   },
   "entity": {
     "select": {
-      "display_brightness": {
-        "name": "Displayhelligkeit",
-        "state": {
-          "dim": "Gedimmt",
-          "low": "Niedrig",
-          "medium": "Mittel",
-          "normal": "Normal",
-          "high": "Hoch"
-        }
-      },
-      "screen_timeout": {
-        "name": "Display-Abschaltung",
-        "state": {
-          "never": "Nie",
-          "5_seconds": "5 Sekunden",
-          "30_seconds": "30 Sekunden",
-          "60_seconds": "60 Sekunden"
-        }
-      },
-      "prompt_sound": {
-        "name": "Bestätigungston",
-        "state": {
-          "none": "Aus",
-          "low": "Leise",
-          "medium": "Mittel",
-          "high": "Laut"
-        }
-      },
-      "auto_standby": {
-        "name": "Automatischer Standby",
-        "state": {
-          "never": "Nie",
-          "15_minutes": "15 Minuten",
-          "30_minutes": "30 Minuten",
-          "60_minutes": "60 Minuten",
-          "4_hours": "4 Stunden",
-          "8_hours": "8 Stunden",
-          "12_hours": "12 Stunden",
-          "24_hours": "24 Stunden",
-          "48_hours": "48 Stunden"
-        }
-      }
-    }
+      "display_brightness": {"name": "Displayhelligkeit", "state": {"dim": "Gedimmt", "low": "Niedrig", "medium": "Mittel", "normal": "Normal", "high": "Hoch"}},
+      "screen_timeout": {"name": "Display-Abschaltung", "state": {"never": "Nie", "5_seconds": "5 Sekunden", "30_seconds": "30 Sekunden", "60_seconds": "60 Sekunden"}},
+      "prompt_sound": {"name": "Bestätigungston", "state": {"none": "Aus", "low": "Leise", "medium": "Mittel", "high": "Laut"}},
+      "auto_standby": {"name": "Automatischer Standby", "state": {"never": "Nie", "15_minutes": "15 Minuten", "30_minutes": "30 Minuten", "60_minutes": "60 Minuten", "4_hours": "4 Stunden", "8_hours": "8 Stunden", "12_hours": "12 Stunden", "24_hours": "24 Stunden", "48_hours": "48 Stunden"}}
+    },
+    "number": {"equalizer_band": {"name": "EQ {frequency}"}},
+    "switch": {"xupmix": {"name": "X-Upmix"}},
+    "sensor": {"capabilities": {"name": "Funktionen"}}
   }
 }

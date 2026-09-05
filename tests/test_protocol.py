@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import ast
 import importlib.util
+import json
 from pathlib import Path
 import sys
 
-MODULE = Path(__file__).parents[1] / "custom_components" / "ultimea" / "protocol.py"
+ROOT = Path(__file__).parents[1]
+MODULE = ROOT / "custom_components" / "ultimea" / "protocol.py"
 spec = importlib.util.spec_from_file_location("ultimea_protocol", MODULE)
 protocol = importlib.util.module_from_spec(spec)
 assert spec and spec.loader
@@ -14,15 +16,11 @@ spec.loader.exec_module(protocol)
 
 
 def test_volume_9_command():
-    assert protocol.build_command(0x02, 0x03, b"\x09") == bytes.fromhex(
-        "aa 01 00 02 03 09 b8"
-    )
+    assert protocol.build_command(0x02, 0x03, b"\x09") == bytes.fromhex("aa 01 00 02 03 09 b8")
 
 
 def test_earc_command():
-    assert protocol.build_command(0x02, 0x02, b"\x10") == bytes.fromhex(
-        "aa 01 00 02 02 10 be"
-    )
+    assert protocol.build_command(0x02, 0x02, b"\x10") == bytes.fromhex("aa 01 00 02 02 10 be")
 
 
 def test_identity_model_query():
@@ -43,9 +41,7 @@ def test_parse_padded_notification():
 
 
 def test_parse_two_embedded_frames():
-    payload = bytes.fromhex(
-        "bb 01 00 02 0c 00 b8 bb 01 00 01 07 0f c1 32 38 07 00"
-    )
+    payload = bytes.fromhex("bb 01 00 02 0c 00 b8 bb 01 00 01 07 0f c1 32 38 07 00")
     frames = list(protocol.iter_frames(payload))
     assert [(frame.group, frame.command, frame.data) for frame in frames] == [
         (0x02, 0x0C, b"\x00"),
@@ -58,18 +54,18 @@ def test_state_query_commands():
     assert protocol.build_command(0x01, 0x08) == bytes.fromhex("aa 00 00 01 08 b3")
     assert protocol.build_command(0x01, 0x0E) == bytes.fromhex("aa 00 00 01 0e b9")
     assert protocol.build_command(0x01, 0x17) == bytes.fromhex("aa 00 00 01 17 c2")
+    assert protocol.build_command(0x01, 0x18) == bytes.fromhex("aa 00 00 01 18 c3")
+
+
+def test_xupmix_hardware_set_frames():
+    assert protocol.build_command(0x02, 0x16, b"\x01") == bytes.fromhex("aa 01 00 02 16 01 c3")
+    assert protocol.build_command(0x02, 0x16, b"\x00") == bytes.fromhex("aa 01 00 02 16 00 c2")
 
 
 def test_safe_code_known_hardware_pairs():
     pairs = (
-        (0x13, 0xB7),
-        (0xEC, 0x10),
-        (0x80, 0x24),
-        (0x7F, 0x9A),
-        (0x6E, 0xA6),
-        (0x91, 0x67),
-        (0xC2, 0xFC),
-        (0x3D, 0x26),
+        (0x13, 0xB7), (0xEC, 0x10), (0x80, 0x24), (0x7F, 0x9A),
+        (0x6E, 0xA6), (0x91, 0x67), (0xC2, 0xFC), (0x3D, 0x26),
     )
     for first, second in pairs:
         assert protocol.safe_code_byte(first) == second
@@ -102,56 +98,95 @@ def test_safe_code_pair_validation_is_independent_of_complement_relation():
     assert not protocol.safe_code_response_complements(0x6E, response)
 
 
-def test_public_release_version():
-    import json
+def test_custom_eq_payload_round_trip():
+    gains = (-60, -50, -40, -30, -20, -10, 0, 10, 20, 60)
+    payload = protocol.build_equalizer_payload(gains)
+    assert len(payload) == 41
+    assert payload[0] == 0x07
+    decoded = protocol.parse_equalizer_payload(payload)
+    assert decoded is not None
+    assert decoded.profile == protocol.EQ_CUSTOM_PROFILE
+    assert decoded.frequencies_hz == protocol.EQ_FREQUENCIES_HZ
+    assert decoded.gains_tenths_db == gains
 
-    manifest = Path(__file__).parents[1] / "custom_components" / "ultimea" / "manifest.json"
+
+def test_custom_style_profile_is_decoded_but_not_claimed_as_stateful_mode():
+    payload = protocol.build_equalizer_payload([0] * 10, profile=protocol.EQ_STYLE_PROFILE)
+    decoded = protocol.parse_equalizer_payload(payload)
+    assert decoded is not None
+    assert decoded.profile == 0x08
+    assert decoded.gains_tenths_db == (0,) * 10
+
+
+def test_public_release_version():
+    manifest = ROOT / "custom_components" / "ultimea" / "manifest.json"
     data = json.loads(manifest.read_text(encoding="utf-8"))
-    assert data["version"] == "2026.09.05"
+    assert data["version"] == "2026.09.05.1"
     assert data["integration_type"] == "device"
 
 
+def test_hardware_getter_map_is_preserved():
+    const_py = (ROOT / "custom_components" / "ultimea" / "const.py").read_text(encoding="utf-8")
+    for expected in (
+        "INFO_SOURCE = 0x06",
+        "INFO_VOLUME = 0x07",
+        "INFO_SOUND_MODE = 0x08",
+        "INFO_PROMPT_SOUND = 0x0A",
+        "INFO_SCREEN_TIMEOUT = 0x0C",
+        "INFO_POWER = 0x0D",
+        "INFO_MUTE = 0x0E",
+        "INFO_BRIGHTNESS = 0x0F",
+        "INFO_AUTO_STANDBY = 0x17",
+        "INFO_XUPMIX = 0x18",
+        "CMD_XUPMIX = 0x16",
+        "0x00: Source.EARC",
+    ):
+        assert expected in const_py
+
+
+def test_advanced_entity_platforms_are_forwarded():
+    init_py = (ROOT / "custom_components" / "ultimea" / "__init__.py").read_text(encoding="utf-8")
+    for platform in ("Platform.NUMBER", "Platform.SWITCH", "Platform.SENSOR"):
+        assert platform in init_py
+    for filename in ("number.py", "switch.py", "sensor.py"):
+        assert (ROOT / "custom_components" / "ultimea" / filename).exists()
+
+
+def test_xupmix_uses_authoritative_info_readback():
+    runtime_py = (ROOT / "custom_components" / "ultimea" / "runtime.py").read_text(encoding="utf-8")
+    assert "async_set_xupmix" in runtime_py
+    assert "CMD_XUPMIX" in runtime_py
+    assert "INFO_XUPMIX" in runtime_py
+    assert "await self.async_query(GROUP_INFO, INFO_XUPMIX" in runtime_py
+    assert "write_gatt_char" in runtime_py
+
+
+def test_semantic_ability_field_map_contains_proven_d80_prefix():
+    const_py = (ROOT / "custom_components" / "ultimea" / "const.py").read_text(encoding="utf-8")
+    for name in (
+        "has_led", "has_bass", "has_surround", "has_earc", "has_arc", "has_hdmi",
+        "has_bluetooth", "has_aux", "has_usb", "has_dolby_atmos", "has_dolby_vision",
+        "has_burn_sn", "has_ota", "chip_code", "has_single_led", "has_display_screen",
+        "off_state_boot", "has_custom_standby_time",
+    ):
+        assert f'"{name}"' in const_py
+
+
 def test_bluetooth_advertisement_callback_signature():
-    runtime_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "runtime.py"
-    )
+    runtime_py = ROOT / "custom_components" / "ultimea" / "runtime.py"
     tree = ast.parse(runtime_py.read_text(encoding="utf-8"))
     method = next(
-        node
-        for node in ast.walk(tree)
+        node for node in ast.walk(tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
         and node.name == "async_handle_advertisement"
     )
-    assert [arg.arg for arg in method.args.args] == [
-        "self",
-        "service_info",
-        "_change",
-    ]
+    assert [arg.arg for arg in method.args.args] == ["self", "service_info", "_change"]
 
 
 def test_unavailable_heartbeat_is_configurable():
-    const_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "const.py"
-    ).read_text(encoding="utf-8")
-    config_flow_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "config_flow.py"
-    ).read_text(encoding="utf-8")
-    device_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "device.py"
-    ).read_text(encoding="utf-8")
-
+    const_py = (ROOT / "custom_components" / "ultimea" / "const.py").read_text(encoding="utf-8")
+    config_flow_py = (ROOT / "custom_components" / "ultimea" / "config_flow.py").read_text(encoding="utf-8")
+    device_py = (ROOT / "custom_components" / "ultimea" / "device.py").read_text(encoding="utf-8")
     assert 'CONF_HEARTBEAT_INTERVAL = "heartbeat_interval"' in const_py
     assert "DEFAULT_HEARTBEAT_INTERVAL = 30" in const_py
     assert "CONF_HEARTBEAT_INTERVAL" in config_flow_py
@@ -164,36 +199,21 @@ def test_apk_capability_query_command():
 
 
 def test_multimodel_transport_constants_present():
-    const_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "const.py"
-    ).read_text(encoding="utf-8")
+    const_py = (ROOT / "custom_components" / "ultimea" / "const.py").read_text(encoding="utf-8")
     assert "27758d55-bf3a-4ac6-bee5-6259ccb7c9b7" in const_py
     assert "27758d66-bf3a-4ac6-bee5-6259ccb7c9b7" in const_py
     assert 'CAP_FETCH_ABILITIES = 0x00' in const_py
 
 
 def test_no_d80_model_allowlist_in_identity_refresh():
-    device_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "device.py"
-    ).read_text(encoding="utf-8")
+    device_py = (ROOT / "custom_components" / "ultimea" / "device.py").read_text(encoding="utf-8")
     assert 'model != SUPPORTED_MODEL' not in device_py
     assert "async_detect_capabilities" in device_py
     assert "_transport_candidates" in device_py
 
 
 def test_apk_profile_contains_embedded_models_and_capabilities():
-    profiles_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "profiles.py"
-    ).read_text(encoding="utf-8")
+    profiles_py = (ROOT / "custom_components" / "ultimea" / "profiles.py").read_text(encoding="utf-8")
     for model in ("Apollo B60", "Apollo B70", "Nova S80", "Poseidon M80", "Poseidon M90V"):
         assert model in profiles_py
     for capability in ("hasToneControl", "hasXupMix", "hasSurroundVolume", "hasAuraCast"):
@@ -201,23 +221,11 @@ def test_apk_profile_contains_embedded_models_and_capabilities():
 
 
 def test_initial_full_refresh_is_deferred_until_ha_started():
-    runtime_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "runtime.py"
-    ).read_text(encoding="utf-8")
-    init_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "__init__.py"
-    ).read_text(encoding="utf-8")
-
+    runtime_py = (ROOT / "custom_components" / "ultimea" / "runtime.py").read_text(encoding="utf-8")
+    init_py = (ROOT / "custom_components" / "ultimea" / "__init__.py").read_text(encoding="utf-8")
     tree = ast.parse(runtime_py)
     start_method = next(
-        node
-        for node in ast.walk(tree)
+        node for node in ast.walk(tree)
         if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_start"
     )
     start_source = ast.get_source_segment(runtime_py, start_method) or ""
@@ -231,19 +239,8 @@ def test_initial_full_refresh_is_deferred_until_ha_started():
 
 
 def test_reconnect_transition_schedules_full_state_refresh():
-    runtime_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "runtime.py"
-    ).read_text(encoding="utf-8")
-    device_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "device.py"
-    ).read_text(encoding="utf-8")
-
+    runtime_py = (ROOT / "custom_components" / "ultimea" / "runtime.py").read_text(encoding="utf-8")
+    device_py = (ROOT / "custom_components" / "ultimea" / "device.py").read_text(encoding="utf-8")
     assert "if self.keep_connected or not was_available:" in runtime_py
     assert "self._schedule_connect_and_refresh()" in runtime_py
     assert "_async_connect_and_refresh_background" in device_py
@@ -252,12 +249,7 @@ def test_reconnect_transition_schedules_full_state_refresh():
 
 
 def test_safe_code_session_precedes_non_bootstrap_commands():
-    runtime_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "runtime.py"
-    ).read_text(encoding="utf-8")
+    runtime_py = (ROOT / "custom_components" / "ultimea" / "runtime.py").read_text(encoding="utf-8")
     assert "await self._async_safe_code_handshake()" in runtime_py
     assert "validate_safe_code_pair(response)" in runtime_py
     assert "safe_code_response_complements" in runtime_py
@@ -266,19 +258,8 @@ def test_safe_code_session_precedes_non_bootstrap_commands():
 
 
 def test_runtime_tasks_never_block_home_assistant_startup():
-    device_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "device.py"
-    ).read_text(encoding="utf-8")
-    init_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "__init__.py"
-    ).read_text(encoding="utf-8")
-
+    device_py = (ROOT / "custom_components" / "ultimea" / "device.py").read_text(encoding="utf-8")
+    init_py = (ROOT / "custom_components" / "ultimea" / "__init__.py").read_text(encoding="utf-8")
     assert "self.hass.async_create_task(" not in device_py
     assert "async_create_background_task(" in device_py
     assert "self._config_entry.async_create_background_task(" in device_py
@@ -289,12 +270,7 @@ def test_runtime_tasks_never_block_home_assistant_startup():
 
 
 def test_all_runtime_spawn_sites_use_background_task_helper():
-    device_py = (
-        Path(__file__).parents[1]
-        / "custom_components"
-        / "ultimea"
-        / "device.py"
-    ).read_text(encoding="utf-8")
+    device_py = (ROOT / "custom_components" / "ultimea" / "device.py").read_text(encoding="utf-8")
     for task_name in (
         "ULTIMEA connect and refresh",
         "ULTIMEA unavailable heartbeat",

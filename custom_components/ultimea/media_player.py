@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 from homeassistant.components.media_player import (
-    MediaPlayerDeviceClass,
-    MediaPlayerEntity,
-    MediaPlayerEntityFeature,
-    MediaPlayerState,
+    MediaPlayerDeviceClass, MediaPlayerEntity, MediaPlayerEntityFeature, MediaPlayerState,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -19,38 +16,24 @@ from .device import UltimeaError
 from .entity import UltimeaEntity
 
 SOURCE_NAMES = {
-    Source.EARC: "eARC",
-    Source.HDMI: "HDMI",
-    Source.OPTICAL: "Optical",
-    Source.AUX: "AUX",
-    Source.BLUETOOTH: "Bluetooth",
-    Source.USB: "USB",
+    Source.EARC: "eARC", Source.HDMI: "HDMI", Source.OPTICAL: "Optical",
+    Source.AUX: "AUX", Source.BLUETOOTH: "Bluetooth", Source.USB: "USB",
 }
 NAME_TO_SOURCE = {value: key for key, value in SOURCE_NAMES.items()}
-
 SOUND_MODE_NAMES = {
-    SoundMode.MOVIE: "Movie",
-    SoundMode.MUSIC: "Music",
-    SoundMode.VOICE: "Voice",
-    SoundMode.SPORT: "Sport",
-    SoundMode.NIGHT: "Night",
-    SoundMode.GAME: "Game",
+    SoundMode.MOVIE: "Movie", SoundMode.MUSIC: "Music", SoundMode.VOICE: "Voice",
+    SoundMode.SPORT: "Sport", SoundMode.NIGHT: "Night", SoundMode.GAME: "Game",
+    SoundMode.CUSTOM: "Custom EQ",
 }
 NAME_TO_SOUND_MODE = {value: key for key, value in SOUND_MODE_NAMES.items()}
 
 
-async def async_setup_entry(
-    hass: HomeAssistant,
-    entry: ConfigEntry,
-    async_add_entities: AddConfigEntryEntitiesCallback,
-) -> None:
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback) -> None:
     runtime: UltimeaRuntimeData = entry.runtime_data
     async_add_entities([UltimeaMediaPlayer(runtime.device, runtime.volume_max)])
 
 
 class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
-    """Capability-driven ULTIMEA media player."""
-
     _attr_name = None
     _attr_device_class = MediaPlayerDeviceClass.SPEAKER
 
@@ -80,7 +63,12 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
 
     @property
     def sound_mode_list(self) -> list[str] | None:
-        return list(NAME_TO_SOUND_MODE) if self.device.supports(Feature.SOUND_MODE) else None
+        if not self.device.supports(Feature.SOUND_MODE):
+            return None
+        names = [name for mode, name in SOUND_MODE_NAMES.items() if mode is not SoundMode.CUSTOM]
+        if self.device.supports(Feature.EQUALIZER):
+            names.append(SOUND_MODE_NAMES[SoundMode.CUSTOM])
+        return names
 
     @property
     def state(self) -> MediaPlayerState | None:
@@ -93,9 +81,7 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
     @property
     def volume_level(self) -> float | None:
         raw = self.device.state.raw_volume
-        if raw is None:
-            return None
-        return max(0.0, min(1.0, raw / self._volume_max))
+        return None if raw is None else max(0.0, min(1.0, raw / self._volume_max))
 
     @property
     def is_volume_muted(self) -> bool | None:
@@ -103,25 +89,24 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
 
     @property
     def source(self) -> str | None:
-        source = self.device.state.source
-        return SOURCE_NAMES.get(source) if source is not None else None
+        return SOURCE_NAMES.get(self.device.state.source)
 
     @property
     def sound_mode(self) -> str | None:
-        mode = self.device.state.sound_mode
-        return SOUND_MODE_NAMES.get(mode) if mode is not None else None
+        return SOUND_MODE_NAMES.get(self.device.state.sound_mode)
 
     @property
     def extra_state_attributes(self) -> dict[str, int | str | bool] | None:
         attrs: dict[str, int | str | bool] = {}
-        if self.device.state.raw_volume is not None:
-            attrs["raw_volume"] = self.device.state.raw_volume
-        if self.device.state.raw_source is not None:
-            attrs["raw_source"] = self.device.state.raw_source
-        if self.device.state.raw_sound_mode is not None:
-            attrs["raw_sound_mode"] = self.device.state.raw_sound_mode
-        if self.device.identity.protocol_version is not None:
-            attrs["protocol_version"] = self.device.identity.protocol_version
+        for key, value in (
+            ("raw_volume", self.device.state.raw_volume),
+            ("raw_source", self.device.state.raw_source),
+            ("raw_sound_mode", self.device.state.raw_sound_mode),
+            ("protocol_version", self.device.identity.protocol_version),
+            ("eq_profile_id", self.device.state.eq_profile_id),
+        ):
+            if value is not None:
+                attrs[key] = value
         if self.device.transport:
             attrs["ble_transport"] = self.device.transport
         if self.device.identity.profile:
@@ -141,8 +126,7 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         await self._run(self.device.async_set_power(False))
 
     async def async_set_volume_level(self, volume: float) -> None:
-        raw = round(max(0.0, min(1.0, volume)) * self._volume_max)
-        await self._run(self.device.async_set_volume(raw))
+        await self._run(self.device.async_set_volume(round(max(0.0, min(1.0, volume)) * self._volume_max)))
 
     async def async_volume_up(self) -> None:
         raw = self.device.state.raw_volume

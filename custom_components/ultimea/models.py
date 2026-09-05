@@ -9,8 +9,6 @@ from .const import Brightness, Feature, PromptSound, ScreenTimeout, SoundMode, S
 
 @dataclass(slots=True)
 class UltimeaIdentity:
-    """Identity returned by the soundbar itself."""
-
     model: str | None = None
     serial: str | None = None
     firmware: str | None = None
@@ -21,22 +19,17 @@ class UltimeaIdentity:
 
 @dataclass(slots=True)
 class UltimeaCapabilities:
-    """Capabilities learned without assuming a particular marketing model."""
-
     features: set[Feature] = field(default_factory=set)
     raw_ability_flags: tuple[int, ...] = ()
     standby_options: tuple[int, ...] = ()
     transport: str | None = None
 
     def supports(self, feature: Feature) -> bool:
-        """Return whether a feature is safe to expose."""
         return feature in self.features
 
 
 @dataclass(slots=True)
 class UltimeaState:
-    """Last known ULTIMEA state."""
-
     power: bool | None = None
     raw_volume: int | None = None
     muted: bool | None = None
@@ -49,3 +42,6 @@ class UltimeaState:
     screen_timeout: ScreenTimeout | None = None
     prompt_sound: PromptSound | None = None
     standby_minutes: int | None = None
+    xupmix_enabled: bool | None = None
+    eq_profile_id: int | None = None
+    eq_band_gains_tenths_db: tuple[int, ...] | None = None

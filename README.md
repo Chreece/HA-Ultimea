@@ -10,14 +10,14 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.02-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.05.1-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
 </p>
 
 > [!IMPORTANT]
-> This is an **unofficial community integration**. It is not affiliated with, endorsed by, or supported by ULTIMEA. ULTIMEA and Poseidon are trademarks of their respective owners.
+> This is an **unofficial community integration**. It is not affiliated with, endorsed by, or supported by ULTIMEA.
 
 ## Supported devices
 
@@ -26,59 +26,88 @@
 | ULTIMEA Poseidon D80 Boom (U2623) | ✅ Hardware verified |
 | Other ULTIMEA devices that pass the APK common/custom protocol probe | 🧪 Experimental, capability-driven |
 
-The integration is no longer a D80 model-name allow-list. It discovers likely ULTIMEA advertisements, selects either the APK `8D11/8D22` common transport or the `8D55/8D66` custom-common transport, asks the device for its own model/protocol information, fetches the raw app capability block when available, and probes safe read-only state commands. Only capability-proven entities are created.
+The integration is not a D80 model-name allow-list. It discovers likely ULTIMEA advertisements, selects the app protocol transport, asks the device for its model/protocol information, fetches the raw capability block when available, and probes safe read-only states. D80-only advanced functions are enabled by the hardware-verified D80 profile.
 
-The APK snapshot contains explicit code paths/model strings for **Apollo B60/B70, Nova S50/S70/S80, Poseidon M70d/M80/M90V**, but those names are **not** claimed as hardware-verified. New models are allowed to prove protocol compatibility even when their name does not exist in this APK version. See [`docs/APK_PROTOCOL_FINDINGS.md`](docs/APK_PROTOCOL_FINDINGS.md).
-
-## Features
-
-The lists below are the **verified D80 Boom feature set**. On other models, Home Assistant only creates a control after its corresponding safe GET command succeeds with a known response shape.
+## Poseidon D80 Boom entities
 
 ### Media player
 
 - Power on/off
-- Absolute volume
-- Volume up/down in native device steps (when capability-proven)
+- Absolute volume and volume step
 - Mute/unmute
 - Sources: **eARC, HDMI, Optical, AUX, Bluetooth, USB**
-- Sound modes: **Movie, Music, Voice, Sport, Night, Game**
+- Sound modes: **Movie, Music, Voice, Sport, Night, Game, Custom EQ**
 
-### Configuration entities
+### Advanced audio
+
+- **X-Upmix switch** — hardware-verified SET `02:16 00/01`, verified against INFO `01:18`
+- **10-band Custom EQ** — ten `number` entities:
+  - 31 Hz
+  - 62 Hz
+  - 125 Hz
+  - 250 Hz
+  - 500 Hz
+  - 1 kHz
+  - 2 kHz
+  - 4 kHz
+  - 8 kHz
+  - 16 kHz
+- EQ range: **-6 dB … +6 dB**
+- The integration preserves the other nine EQ bands when changing one band.
+- EQ controls are available while the hardware-verified Custom EQ profile `0x07` is active.
+
+### Settings
 
 - Display brightness: **Dim, Low, Medium, Normal, High**
 - Screen timeout: **Never, 5 s, 30 s, 60 s**
 - Prompt sound: **None, Low, Medium, High**
 - Automatic standby: **Never, 15/30/60 min, 4/8/12/24/48 h**
 
-### Integration behavior
+### Diagnostics
 
-- Automatic Bluetooth discovery
-- Home Assistant host Bluetooth and connectable Bluetooth proxies
-- Device-side model/protocol identification (no hard-coded model allow-list)
-- Device serial and firmware detection
-- Full state query during setup and reconnect
-- Push updates from the soundbar while connected
-- Command acknowledgement validation
-- State-query verification if an immediate ACK is missed
-- Persistent and on-demand Bluetooth connection modes
-- Automatic unavailable-device heartbeat/recovery through Home Assistant's Bluetooth manager
-- Diagnostics with identifying data redacted
-- English, German, and Greek translations
+A **Capabilities** diagnostic sensor exposes:
+
+- the raw `fetchAbilities` bytes
+- the recovered semantic capability names for every returned field
+- the integration's currently safe/proven feature set
+- protocol version and selected BLE transport
+
+For the captured D80 firmware the capability payload contains the first 18 recovered fields, including LED, bass, surround, eARC/ARC/HDMI/Bluetooth/AUX/USB, Dolby Atmos/Vision, OTA, chip code, display-screen and custom-standby flags. Missing later fields are omitted, not silently treated as false.
+
+## Safe-code session
+
+Release `2026.09.05` added the official `00:01` session exchange required by the app protocol. The integrity byte is:
+
+```text
+(MD5(single_byte).last_digest_byte + 5) & 0xff
+```
+
+Every new BLE protocol session establishes safe-code state before normal non-bootstrap commands. Firmware replies are pair-integrity validated. The D80's observed first-byte complement relationship is retained as a diagnostic rather than imposed as an app requirement because static analysis did not prove that the official app enforces it.
+
+## State synchronization
+
+Home Assistant does **not** connect to the soundbar while HA is still booting. The first complete identity/capability/state refresh is scheduled after `homeassistant_started`; integration reloads run it immediately when HA is already running.
+
+After a reconnect/recovery the integration refreshes every exposed state, including X-Upmix. Custom EQ is read back automatically only if profile `0x07` is already active, so a background refresh never changes the user's sound mode merely to obtain EQ values.
+
+While a persistent BLE connection is open, valid ULTIMEA notifications update entities without polling. In on-demand mode the connection is released after the configured delay.
+
+## Bluetooth routing
+
+The integration uses Home Assistant's shared Bluetooth manager and can use supported local adapters or connectable Bluetooth proxies. It does not start/stop global Bluetooth scanning and does not hard-code a local adapter or test-device MAC address.
 
 ## Installation
 
 ### HACS
 
-Until the repository is accepted into the default HACS catalog, add it as a custom repository:
+Until the repository is accepted into the default HACS catalog:
 
 1. Open **HACS → Integrations**.
-2. Open the menu and choose **Custom repositories**.
-3. Add `https://github.com/Chreece/HA-ULTIMEA`.
-4. Select category **Integration**.
-5. Install **ULTIMEA**.
-6. Restart Home Assistant.
-
-Then open **Settings → Devices & services**. A powered/advertising compatible ULTIMEA soundbar should be discovered automatically. You can also select **Add Integration → ULTIMEA**.
+2. Open **Custom repositories**.
+3. Add `https://github.com/Chreece/HA-ULTIMEA` as an **Integration**.
+4. Install **ULTIMEA**.
+5. Restart Home Assistant.
+6. Open **Settings → Devices & services** and add/discover the soundbar.
 
 ### Manual
 
@@ -96,104 +125,51 @@ into:
 
 and restart Home Assistant.
 
-## Configuration
-
-The setup flow verifies the ULTIMEA app protocol over BLE and capability-probes the soundbar before creating the entry. The device title is based on the reported model and serial suffix, while the Bluetooth address is retained as the discovery key so Home Assistant can suppress duplicate discoveries immediately.
-
-The integration options contain:
+## Options
 
 | Option | Default | Purpose |
 |---|---:|---|
 | Keep Bluetooth connection open | On | Enables immediate push updates from the physical remote/device |
-| On-demand disconnect delay | 15 s | Releases the BLE connection for the official app after a command |
-| Maximum protocol volume | 100 | Maps the device integer volume to Home Assistant's `0.0–1.0` volume scale |
-| Unavailable heartbeat interval | 30 s | Retries only this configured soundbar while unavailable and refreshes state when it returns |
+| On-demand disconnect delay | 15 s | Releases BLE for the official app after a command |
+| Maximum protocol volume | 100 | Maps device volume to Home Assistant's `0.0–1.0` scale |
+| Unavailable heartbeat interval | 30 s | Retries only this configured soundbar while unavailable |
 
-If your soundbar firmware uses a different maximum volume, change **Maximum protocol volume** in the integration options.
+## Evidence boundaries
 
-## State synchronization
+The integration deliberately does **not** turn every APK method or capability flag into a Home Assistant control.
 
-When Home Assistant connects, the integration actively reads each capability-proven current state instead of waiting for the next change. It queries:
-
-- power
-- mute
-- volume
-- source
-- sound mode
-- display brightness
-- screen timeout
-- prompt sound
-- automatic standby
-- model
-- serial
-- firmware
-
-While the BLE connection remains open, valid ULTIMEA notifications update the entities without polling. If Home Assistant marks the soundbar unavailable (or a persistent BLE link drops), an unavailable-only heartbeat retries that configured device at the configured interval and performs a full refresh as soon as communication returns.
-
-## Bluetooth routing
-
-The integration uses Home Assistant's shared Bluetooth manager. It does **not** start or stop global Bluetooth scanning and does not hard-code a local adapter. The unavailable heartbeat uses the same manager and targets only the configured soundbar address.
-
-Home Assistant can therefore select a suitable connectable route from supported local adapters or Bluetooth proxies. For the most responsive state updates, keep the connection open. If the ULTIMEA phone app needs frequent access to the soundbar, on-demand mode may be preferable.
-
-## Diagnostics
-
-Open:
-
-**Settings → Devices & services → ULTIMEA → device → ⋮ → Download diagnostics**
-
-The diagnostic payload includes runtime state, availability, RSSI, and identity information useful for bug reports. Bluetooth address and serial are redacted.
-
-When opening an issue, include:
-
-- Home Assistant version
-- ULTIMEA integration version
-- model and firmware shown by Home Assistant
-- whether the connection is local Bluetooth or a Bluetooth proxy
-- diagnostics
-- relevant Home Assistant logs
-
-## Troubleshooting
-
-### Device is discovered but cannot be added
-
-Make sure the soundbar is powered and not exclusively connected to the ULTIMEA app. The setup flow must connect once to verify the ULTIMEA app protocol and read the device-reported model.
-
-### Entities are unavailable or unknown after restart
-
-The integration performs a complete read after connecting. If the soundbar is out of range, powered down, or another client owns the BLE connection, state remains unavailable until Home Assistant can reconnect.
-
-### The ULTIMEA phone app cannot connect
-
-Disable **Keep Bluetooth connection open** in the integration options. Home Assistant will connect when needed and release the soundbar after the configured delay.
-
-### A previously configured D80 is discovered again
-
-Release `2026.09.02` keeps the Bluetooth address as the config-entry discovery identity and the device serial as registry metadata, preventing the duplicate-discovery behavior seen in early development builds.
-
-## Currently not implemented
-
-The following controls are intentionally **not guessed** and will be added only after their app commands are captured and verified on hardware:
+Not currently exposed:
 
 - Bass
-- Mid
+- Mid/Midrange
 - Treble
 - Surround level
-- X-Upmix
-- Custom/advanced EQ
+- Custom Style profile `0x08` as a persistent sound mode
+- Current incoming HDMI/eARC codec/format
 - Firmware OTA
+- Responsive but still unnamed INFO commands `01:0B`, `01:10`, `01:11`, `01:12`
+
+Profile `0x08` is proven to be the D80 app's **Custom Style** XY mode and its 41-byte curve format is decoded, but an authoritative restart/reconnect getter identifying active Style state has not been proven. Bass/Mid/Treble/Surround remain outside the proven ordinary D80 BLE GET+SET surface. These are intentionally left unexposed rather than guessed.
 
 ## Protocol documentation
 
-The reverse-engineered and hardware-verified BLE frame format and command table are documented in [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
+See [`docs/PROTOCOL.md`](docs/PROTOCOL.md) for the hardware-verified INFO/CONTROL command maps, safe-code algorithm, Custom EQ payload, X-Upmix verification behavior and capability-field order.
+
+## Diagnostics and troubleshooting
+
+Download diagnostics from:
+
+**Settings → Devices & services → ULTIMEA → device → ⋮ → Download diagnostics**
+
+If the phone app cannot connect, disable **Keep Bluetooth connection open** so Home Assistant releases BLE after the configured delay. If the soundbar is powered down/out of range, entities stay unavailable until the configured targeted recovery path reaches it again.
 
 ## Privacy
 
-Control is local over Bluetooth. The integration does not require ULTIMEA credentials, does not call ULTIMEA cloud APIs, and does not intentionally transmit device state outside Home Assistant.
+Control is local over Bluetooth. The integration requires no ULTIMEA credentials and intentionally sends no soundbar state to an ULTIMEA cloud service.
 
 ## Contributing
 
-Bug reports, additional ULTIMEA model/firmware observations, protocol captures, translations, and tested support for additional ULTIMEA models are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Bug reports, additional model/firmware observations, protocol captures, translations and hardware-tested support are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Release history
 
