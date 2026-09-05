@@ -121,8 +121,22 @@ def test_custom_style_profile_is_decoded_but_not_claimed_as_stateful_mode():
 def test_public_release_version():
     manifest = ROOT / "custom_components" / "ultimea" / "manifest.json"
     data = json.loads(manifest.read_text(encoding="utf-8"))
-    assert data["version"] == "2026.09.05.1"
+    assert data["version"] == "2026.09.05.2"
     assert data["integration_type"] == "device"
+
+
+def test_media_player_dynamic_icon_contains_input_and_eq_mode():
+    media_player_py = (ROOT / "custom_components" / "ultimea" / "media_player.py").read_text(encoding="utf-8")
+    for expected in (
+        "def _dynamic_media_picture(",
+        "data:image/svg+xml,",
+        "SOURCE_BADGES",
+        "EQ_BADGES",
+        "raw_sound_mode == 0x08",
+        "def entity_picture(self)",
+        "def icon(self)",
+    ):
+        assert expected in media_player_py
 
 
 def test_hardware_getter_map_is_preserved():
