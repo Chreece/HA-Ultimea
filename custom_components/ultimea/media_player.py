@@ -2,8 +2,13 @@
 
 from __future__ import annotations
 
+from urllib.parse import quote
+
 from homeassistant.components.media_player import (
-    MediaPlayerDeviceClass, MediaPlayerEntity, MediaPlayerEntityFeature, MediaPlayerState,
+    MediaPlayerDeviceClass,
+    MediaPlayerEntity,
+    MediaPlayerEntityFeature,
+    MediaPlayerState,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -16,19 +21,94 @@ from .device import UltimeaError
 from .entity import UltimeaEntity
 
 SOURCE_NAMES = {
-    Source.EARC: "eARC", Source.HDMI: "HDMI", Source.OPTICAL: "Optical",
-    Source.AUX: "AUX", Source.BLUETOOTH: "Bluetooth", Source.USB: "USB",
+    Source.EARC: "eARC",
+    Source.HDMI: "HDMI",
+    Source.OPTICAL: "Optical",
+    Source.AUX: "AUX",
+    Source.BLUETOOTH: "Bluetooth",
+    Source.USB: "USB",
 }
 NAME_TO_SOURCE = {value: key for key, value in SOURCE_NAMES.items()}
 SOUND_MODE_NAMES = {
-    SoundMode.MOVIE: "Movie", SoundMode.MUSIC: "Music", SoundMode.VOICE: "Voice",
-    SoundMode.SPORT: "Sport", SoundMode.NIGHT: "Night", SoundMode.GAME: "Game",
+    SoundMode.MOVIE: "Movie",
+    SoundMode.MUSIC: "Music",
+    SoundMode.VOICE: "Voice",
+    SoundMode.SPORT: "Sport",
+    SoundMode.NIGHT: "Night",
+    SoundMode.GAME: "Game",
     SoundMode.CUSTOM: "Custom EQ",
 }
 NAME_TO_SOUND_MODE = {value: key for key, value in SOUND_MODE_NAMES.items()}
 
+SOURCE_ICONS = {
+    Source.EARC: "mdi:television-speaker",
+    Source.HDMI: "mdi:hdmi-port",
+    Source.OPTICAL: "mdi:toslink",
+    Source.AUX: "mdi:audio-input-stereo-minijack",
+    Source.BLUETOOTH: "mdi:bluetooth-audio",
+    Source.USB: "mdi:usb-port",
+}
+SOURCE_BADGES = {
+    Source.EARC: "ARC",
+    Source.HDMI: "HDMI",
+    Source.OPTICAL: "OPT",
+    Source.AUX: "AUX",
+    Source.BLUETOOTH: "BT",
+    Source.USB: "USB",
+}
+EQ_BADGES = {
+    SoundMode.MOVIE: "MOV",
+    SoundMode.MUSIC: "MUS",
+    SoundMode.VOICE: "VOX",
+    SoundMode.SPORT: "SPT",
+    SoundMode.NIGHT: "NGT",
+    SoundMode.GAME: "GAME",
+    SoundMode.CUSTOM: "EQ",
+}
+EQ_ACCENTS = {
+    SoundMode.MOVIE: "#ec407a",
+    SoundMode.MUSIC: "#7e57c2",
+    SoundMode.VOICE: "#26c6da",
+    SoundMode.SPORT: "#66bb6a",
+    SoundMode.NIGHT: "#5c6bc0",
+    SoundMode.GAME: "#ffa726",
+    SoundMode.CUSTOM: "#00acc1",
+}
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback) -> None:
+
+def _dynamic_media_picture(
+    source: Source | None,
+    sound_mode: SoundMode | None,
+    raw_sound_mode: int | None,
+) -> str:
+    """Build a compact local SVG showing input and EQ mode together."""
+    source_badge = SOURCE_BADGES.get(source, "IN")
+    if raw_sound_mode == 0x08 and sound_mode is None:
+        eq_badge = "STY"
+        accent = "#ab47bc"
+    else:
+        eq_badge = EQ_BADGES.get(sound_mode, "EQ")
+        accent = EQ_ACCENTS.get(sound_mode, "#42a5f5")
+
+    svg = f"""
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'>
+  <rect width='96' height='96' rx='22' fill='#151a23'/>
+  <rect x='8' y='8' width='42' height='22' rx='9' fill='#263241'/>
+  <text x='29' y='23' text-anchor='middle' font-family='Arial,sans-serif' font-size='11' font-weight='700' fill='#ffffff'>{source_badge}</text>
+  <rect x='49' y='66' width='39' height='22' rx='9' fill='{accent}'/>
+  <text x='68.5' y='81' text-anchor='middle' font-family='Arial,sans-serif' font-size='10' font-weight='700' fill='#ffffff'>{eq_badge}</text>
+  <path d='M22 43h12l14-12v34L34 53H22z' fill='#ffffff'/>
+  <path d='M57 40c5 4 5 12 0 16' fill='none' stroke='{accent}' stroke-width='5' stroke-linecap='round'/>
+  <path d='M65 33c10 10 10 20 0 30' fill='none' stroke='{accent}' stroke-width='5' stroke-linecap='round'/>
+</svg>""".strip()
+    return "data:image/svg+xml," + quote(svg, safe="")
+
+
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
     runtime: UltimeaRuntimeData = entry.runtime_data
     async_add_entities([UltimeaMediaPlayer(runtime.device, runtime.volume_max)])
 
@@ -36,6 +116,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
 class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
     _attr_name = None
     _attr_device_class = MediaPlayerDeviceClass.SPEAKER
+    _unrecorded_attributes = frozenset({"entity_picture"})
 
     def __init__(self, device, volume_max: int) -> None:
         super().__init__(device)
@@ -65,7 +146,11 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
     def sound_mode_list(self) -> list[str] | None:
         if not self.device.supports(Feature.SOUND_MODE):
             return None
-        names = [name for mode, name in SOUND_MODE_NAMES.items() if mode is not SoundMode.CUSTOM]
+        names = [
+            name
+            for mode, name in SOUND_MODE_NAMES.items()
+            if mode is not SoundMode.CUSTOM
+        ]
         if self.device.supports(Feature.EQUALIZER):
             names.append(SOUND_MODE_NAMES[SoundMode.CUSTOM])
         return names
@@ -77,6 +162,24 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         if self.device.state.power is True:
             return MediaPlayerState.ON
         return None
+
+    @property
+    def icon(self) -> str:
+        """Provide a source-aware MDI fallback for cards without entity pictures."""
+        if self.device.state.power is False:
+            return "mdi:speaker-off"
+        return SOURCE_ICONS.get(self.device.state.source, "mdi:speaker")
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Show current input and EQ mode in one dynamically generated icon."""
+        if self.device.state.power is False:
+            return None
+        return _dynamic_media_picture(
+            self.device.state.source,
+            self.device.state.sound_mode,
+            self.device.state.raw_sound_mode,
+        )
 
     @property
     def volume_level(self) -> float | None:
@@ -126,7 +229,11 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         await self._run(self.device.async_set_power(False))
 
     async def async_set_volume_level(self, volume: float) -> None:
-        await self._run(self.device.async_set_volume(round(max(0.0, min(1.0, volume)) * self._volume_max)))
+        await self._run(
+            self.device.async_set_volume(
+                round(max(0.0, min(1.0, volume)) * self._volume_max)
+            )
+        )
 
     async def async_volume_up(self) -> None:
         raw = self.device.state.raw_volume
