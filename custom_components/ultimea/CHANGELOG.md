@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.05.2
+
+### Added
+
+- Added a dynamic media-player entity picture that shows the current input and EQ/sound mode together in one compact icon.
+- Added source-aware MDI fallback icons for cards that do not render `entity_picture`.
+- The dynamic icon also identifies decoded Custom Style profile `0x08` as `STY` without exposing it as a persistent selectable sound mode.
+
 ## 2026.09.05.1
 
 ### Added
