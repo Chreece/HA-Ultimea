@@ -121,8 +121,20 @@ def test_custom_style_profile_is_decoded_but_not_claimed_as_stateful_mode():
 def test_public_release_version():
     manifest = ROOT / "custom_components" / "ultimea" / "manifest.json"
     data = json.loads(manifest.read_text(encoding="utf-8"))
-    assert data["version"] == "2026.09.05.2"
+    version = data["version"]
+    parts = version.split(".")
+    assert len(parts) in (3, 4)
+    assert len(parts[0]) == 4
+    assert all(part.isdigit() for part in parts)
     assert data["integration_type"] == "device"
+
+    changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+    latest_heading = next(
+        line.removeprefix("## ").strip()
+        for line in changelog.splitlines()
+        if line.startswith("## ")
+    )
+    assert latest_heading == version
 
 
 def test_media_player_dynamic_icon_contains_input_and_eq_mode():
