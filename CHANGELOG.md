@@ -4,6 +4,12 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.05.3
+
+### Fixed
+
+- Remove obsolete legacy `sensor.*` X-Upmix entity-registry entries on setup/reload. X-Upmix state and control now live only on the authoritative `switch` entity.
+
 ## 2026.09.05.2
 
 ### Added
