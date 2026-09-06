@@ -4,6 +4,27 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.06
+
+### Changed
+
+- Added profile-gated semantic wire mappings so a readable/capability-supported feature is no longer automatically treated as writable.
+- D80 control paths now come only from the hardware-verified D80 profile; APK-common and generic devices remain read-only for controls until an exact setter mapping is proven for their wire family.
+- Recorded the statically recovered Frontier single-LED command family as dormant profile evidence: `01:16/02:14` shutdown time, `01:11/02:0F` brightness and `01:12/02:10` power. These mappings are not assigned to any product model yet.
+- Added semantic capability slots for incoming audio format and single-LED functions without creating guessed entities.
+- Updated GitHub Actions checkout/setup-python dependencies to v7.
+
+### Safety
+
+- Media-player controls, configuration selects, Custom EQ numbers, X-Upmix and Style actions now require an explicit profile-specific writable mapping.
+- Numeric command IDs are no longer allowed to define universal semantics. In particular, D80 `02:0F` remains outside all ordinary feature writes because it is the destructive restore-default command on that profile, while static Frontier evidence assigns the same numeric command to single-LED brightness.
+
+### Evidence and limits
+
+- D80 `01:10`, `01:11` and `01:12` remain intentionally unresolved and are not exposed as entities.
+- D80 `01:62` remains unsupported/no-response, so incoming signal-format telemetry is not exposed on the D80.
+- Frontier single-LED mappings remain dormant until a concrete product/profile ownership link is proven.
+
 ## 2026.09.05.4
 
 ### Added
