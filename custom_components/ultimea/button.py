@@ -13,12 +13,23 @@ from .const import Feature
 from .device import UltimeaError
 from .entity import UltimeaEntity
 from .eq_style import STYLE_PRESETS
+from .profiles import can_write_feature
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
     runtime: UltimeaRuntimeData = entry.runtime_data
-    if runtime.device.supports(Feature.STYLE):
-        async_add_entities([UltimeaStyleButton(runtime.device, name) for name in STYLE_PRESETS])
+    if can_write_feature(
+        runtime.device.identity.model,
+        Feature.STYLE,
+        runtime.device.capabilities.features,
+    ):
+        async_add_entities(
+            [UltimeaStyleButton(runtime.device, name) for name in STYLE_PRESETS]
+        )
 
 
 class UltimeaStyleButton(UltimeaEntity, ButtonEntity):

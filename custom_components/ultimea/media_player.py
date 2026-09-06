@@ -20,6 +20,7 @@ from .const import Feature, SoundMode, Source
 from .device import UltimeaError
 from .entity import UltimeaEntity
 from .eq_style import identify_style_preset
+from .profiles import can_write_feature
 
 SOURCE_NAMES = {
     Source.EARC: "eARC",
@@ -127,37 +128,44 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         self._attr_unique_id = f"{device.identity.serial or device.address}_media_player"
         self._volume_max = max(1, volume_max)
 
+    def _can_write(self, feature: Feature) -> bool:
+        return can_write_feature(
+            self.device.identity.model,
+            feature,
+            self.device.capabilities.features,
+        )
+
     @property
     def supported_features(self) -> MediaPlayerEntityFeature:
         features = MediaPlayerEntityFeature(0)
-        if self.device.supports(Feature.POWER):
+        if self._can_write(Feature.POWER):
             features |= MediaPlayerEntityFeature.TURN_ON | MediaPlayerEntityFeature.TURN_OFF
-        if self.device.supports(Feature.VOLUME):
+        if self._can_write(Feature.VOLUME):
             features |= MediaPlayerEntityFeature.VOLUME_SET | MediaPlayerEntityFeature.VOLUME_STEP
-        if self.device.supports(Feature.MUTE):
+        if self._can_write(Feature.MUTE):
             features |= MediaPlayerEntityFeature.VOLUME_MUTE
-        if self.device.supports(Feature.SOURCE):
+        if self._can_write(Feature.SOURCE):
             features |= MediaPlayerEntityFeature.SELECT_SOURCE
-        if self.device.supports(Feature.SOUND_MODE):
+        if self._can_write(Feature.SOUND_MODE):
             features |= MediaPlayerEntityFeature.SELECT_SOUND_MODE
         return features
 
     @property
     def source_list(self) -> list[str] | None:
-        return list(NAME_TO_SOURCE) if self.device.supports(Feature.SOURCE) else None
+        return list(NAME_TO_SOURCE) if self._can_write(Feature.SOURCE) else None
 
     @property
     def sound_mode_list(self) -> list[str] | None:
-        if not self.device.supports(Feature.SOUND_MODE):
+        if not self._can_write(Feature.SOUND_MODE):
             return None
         names = [
             name
             for mode, name in SOUND_MODE_NAMES.items()
             if mode not in (SoundMode.CUSTOM, SoundMode.STYLE)
         ]
-        if self.device.supports(Feature.EQUALIZER):
+        if self._can_write(Feature.EQUALIZER):
             names.append(SOUND_MODE_NAMES[SoundMode.CUSTOM])
-        if self.device.supports(Feature.STYLE):
+        if self._can_write(Feature.STYLE):
             names.append(SOUND_MODE_NAMES[SoundMode.STYLE])
         return names
 
@@ -171,14 +179,12 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
 
     @property
     def icon(self) -> str:
-        """Provide a source-aware MDI fallback for cards without entity pictures."""
         if self.device.state.power is False:
             return "mdi:speaker-off"
         return SOURCE_ICONS.get(self.device.state.source, "mdi:speaker")
 
     @property
     def entity_picture(self) -> str | None:
-        """Show current input and EQ mode in one dynamically generated icon."""
         if self.device.state.power is False:
             return None
         return _dynamic_media_picture(

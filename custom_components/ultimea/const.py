@@ -84,7 +84,7 @@ CMD_XUPMIX = 0x16
 
 
 class Feature(StrEnum):
-    """Operational features whose D80/app protocol path is proven safe."""
+    """Operational semantic features known to the integration."""
 
     POWER = "power"
     MUTE = "mute"
@@ -98,6 +98,10 @@ class Feature(StrEnum):
     XUPMIX = "xupmix"
     EQUALIZER = "equalizer"
     STYLE = "style"
+    AUDIO_SIGNAL_FORMAT = "audio_signal_format"
+    SINGLE_LED_SHUTDOWN_TIME = "single_led_shutdown_time"
+    SINGLE_LED_BRIGHTNESS = "single_led_brightness"
+    SINGLE_LED_POWER = "single_led_power"
 
 
 class Source(StrEnum):

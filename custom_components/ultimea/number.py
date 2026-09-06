@@ -12,6 +12,7 @@ from . import UltimeaRuntimeData
 from .const import Feature
 from .device import UltimeaError
 from .entity import UltimeaEntity
+from .profiles import can_write_feature
 from .protocol import EQ_CUSTOM_PROFILE, EQ_FREQUENCIES_HZ
 
 
@@ -19,11 +20,22 @@ def _frequency_label(hz: int) -> str:
     return f"{hz // 1000} kHz" if hz >= 1000 else f"{hz} Hz"
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback) -> None:
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
     runtime: UltimeaRuntimeData = entry.runtime_data
-    if runtime.device.supports(Feature.EQUALIZER):
+    if can_write_feature(
+        runtime.device.identity.model,
+        Feature.EQUALIZER,
+        runtime.device.capabilities.features,
+    ):
         async_add_entities(
-            [UltimeaEqualizerBand(runtime.device, i, hz) for i, hz in enumerate(EQ_FREQUENCIES_HZ)]
+            [
+                UltimeaEqualizerBand(runtime.device, i, hz)
+                for i, hz in enumerate(EQ_FREQUENCIES_HZ)
+            ]
         )
 
 

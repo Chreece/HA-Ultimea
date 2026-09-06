@@ -24,12 +24,11 @@ from .const import (
 )
 from .device import UltimeaDevice, UltimeaError
 from .entity import UltimeaEntity
+from .profiles import can_write_feature
 
 
 @dataclass(frozen=True, kw_only=True)
 class UltimeaSelectDescription(SelectEntityDescription):
-    """Description of one capability-gated select entity."""
-
     feature: Feature
     getter: Callable[[UltimeaDevice], str | None]
     setter: Callable[[UltimeaDevice, str], Awaitable[None]]
@@ -53,37 +52,29 @@ async def _set_standby(device: UltimeaDevice, value: str) -> None:
 
 SELECTS = (
     UltimeaSelectDescription(
-        key="display_brightness",
-        translation_key="display_brightness",
-        entity_category=EntityCategory.CONFIG,
-        feature=Feature.BRIGHTNESS,
+        key="display_brightness", translation_key="display_brightness",
+        entity_category=EntityCategory.CONFIG, feature=Feature.BRIGHTNESS,
         options=[item.value for item in Brightness],
         getter=lambda d: d.state.brightness.value if d.state.brightness else None,
         setter=_set_brightness,
     ),
     UltimeaSelectDescription(
-        key="screen_timeout",
-        translation_key="screen_timeout",
-        entity_category=EntityCategory.CONFIG,
-        feature=Feature.SCREEN_TIMEOUT,
+        key="screen_timeout", translation_key="screen_timeout",
+        entity_category=EntityCategory.CONFIG, feature=Feature.SCREEN_TIMEOUT,
         options=[item.value for item in ScreenTimeout],
         getter=lambda d: d.state.screen_timeout.value if d.state.screen_timeout else None,
         setter=_set_screen_timeout,
     ),
     UltimeaSelectDescription(
-        key="prompt_sound",
-        translation_key="prompt_sound",
-        entity_category=EntityCategory.CONFIG,
-        feature=Feature.PROMPT_SOUND,
+        key="prompt_sound", translation_key="prompt_sound",
+        entity_category=EntityCategory.CONFIG, feature=Feature.PROMPT_SOUND,
         options=[item.value for item in PromptSound],
         getter=lambda d: d.state.prompt_sound.value if d.state.prompt_sound else None,
         setter=_set_prompt_sound,
     ),
     UltimeaSelectDescription(
-        key="auto_standby",
-        translation_key="auto_standby",
-        entity_category=EntityCategory.CONFIG,
-        feature=Feature.AUTO_STANDBY,
+        key="auto_standby", translation_key="auto_standby",
+        entity_category=EntityCategory.CONFIG, feature=Feature.AUTO_STANDBY,
         options=[item.value for item in Standby],
         getter=lambda d: (
             standby.value
@@ -105,23 +96,22 @@ async def async_setup_entry(
         [
             UltimeaSelect(runtime.device, description)
             for description in SELECTS
-            if runtime.device.supports(description.feature)
+            if can_write_feature(
+                runtime.device.identity.model,
+                description.feature,
+                runtime.device.capabilities.features,
+            )
         ]
     )
 
 
 class UltimeaSelect(UltimeaEntity, SelectEntity):
-    """One ULTIMEA configuration select."""
-
     entity_description: UltimeaSelectDescription
 
     def __init__(self, device: UltimeaDevice, description: UltimeaSelectDescription) -> None:
         super().__init__(device)
         self.entity_description = description
         self._attr_unique_id = f"{device.identity.serial or device.address}_{description.key}"
-
-        # Auto-standby is the one setting whose GET response carries its own
-        # supported-value list. Restrict the UI to that list when possible.
         if description.feature is Feature.AUTO_STANDBY and device.capabilities.standby_options:
             supported = {
                 MINUTES_TO_STANDBY[m].value
