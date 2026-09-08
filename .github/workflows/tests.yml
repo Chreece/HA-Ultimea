@@ -49,9 +49,37 @@ jobs:
                       in_fade_yaml = False
                   continue
               output.append(line[10:] if line.startswith('          ') else line)
-          script = '\n'.join(output) + '\n'
-          Path('/tmp/no_polling_patch.py').write_text(script, encoding='utf-8')
+          Path('/tmp/no_polling_patch.py').write_text('\n'.join(output) + '\n', encoding='utf-8')
           subprocess.run(['python', '/tmp/no_polling_patch.py'], check=True)
+          PY
+      - name: Clean obsolete tick wording
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          blueprint_paths = [
+              Path('blueprints/automation/ultimea/adaptive_room_audio.yaml'),
+              Path('custom_components/ultimea/blueprints/adaptive_room_audio.yaml'),
+          ]
+          for path in blueprint_paths:
+              text = path.read_text(encoding='utf-8')
+              text = text.replace(
+                  '# Normal scheduled boundary ticks remain fixed-step. A manual',
+                  '# Normal boundary adjustments remain fixed-step. A manual',
+              )
+              text = text.replace(
+                  '# be when the handoff finishes, so subsequent timer ticks resume',
+                  '# be when the handoff finishes, so the active fade run resumes',
+              )
+              path.write_text(text, encoding='utf-8')
+
+          docs = Path('docs/ADAPTIVE_AUDIO_BLUEPRINT.md')
+          text = docs.read_text(encoding='utf-8')
+          text = text.replace(
+              'normal fixed five-second boundary ticks resume from there.',
+              'the active fade run resumes its five-second steps from there.',
+          )
+          docs.write_text(text, encoding='utf-8')
           PY
       - name: Create test virtual environment
         run: python -m venv .venv
@@ -76,6 +104,7 @@ jobs:
           assert 'seconds: "/5"' not in text
           assert 'policy_tick' not in text
           assert 'transition_tick' not in text
+          assert 'timer ticks' not in text
           assert 'delay: "00:00:05"' in text
           assert 'mode: parallel' in text
           manifest = json.loads(Path('custom_components/ultimea/manifest.json').read_text(encoding='utf-8'))
@@ -96,5 +125,5 @@ jobs:
             echo "no source changes to commit"
             exit 0
           fi
-          git commit -m "Remove Adaptive Room Audio polling ticks"
+          git commit -m "Clean no-polling blueprint wording"
           git push origin HEAD:dev/adaptive-no-polling-20260908
