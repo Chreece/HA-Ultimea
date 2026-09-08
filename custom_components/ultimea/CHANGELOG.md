@@ -4,6 +4,29 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.08
+
+### Added
+
+- Added the **ULTIMEA Adaptive Room Audio** automation blueprint with room-aware quiet hours, smooth before/after quiet-hour volume fades, TTS/Assist/binary/list-state ducking, Night mode, connected-content EQ follow and optional provider-neutral AI classification actions.
+- Added persistent min/max volume learning through user-selected `input_number` helpers so manual soundbar volume choices become the new active endpoint instead of being immediately overwritten.
+- Bundled the blueprint inside `custom_components/ultimea` so HACS/manual integration installations carry the automation with the integration itself.
+
+### Automatic blueprint delivery
+
+- ULTIMEA now installs the bundled blueprint automatically into `/config/blueprints/automation/ultimea/adaptive_room_audio.yaml` when the integration loads.
+- Existing ULTIMEA-managed copies are updated automatically only while their digest still matches the last version installed by ULTIMEA.
+- Existing byte-identical manual copies are safely adopted for future managed updates.
+- User-modified or otherwise different existing blueprint files are preserved and never overwritten.
+- Blueprint file work is performed in Home Assistant's executor and a blueprint-install failure does not prevent the soundbar integration from loading.
+- If the Automation integration is already loaded, its blueprint cache is reset after an install/update so the new blueprint becomes visible without a second Home Assistant restart.
+
+### Tests and documentation
+
+- Added installer regression tests for first install, unchanged reload, safe managed update, user-edit preservation and adoption of an identical pre-existing copy.
+- Added a regression check that the public repository blueprint and the HACS-bundled blueprint stay byte-for-byte identical.
+- Updated README and blueprint documentation with automatic-install/update behavior and the HACS first-load boundary.
+
 ## 2026.09.06
 
 ### Changed
