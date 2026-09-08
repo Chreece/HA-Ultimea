@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.08.4
+
+### Changed
+
+- Removed the permanent five-second `transition_tick` and one-minute `policy_tick` triggers from Adaptive Room Audio. The automation no longer executes periodically while idle.
+- Quiet-boundary fades are now event-driven: one automation run starts at the transition boundary and performs its five-second fade cadence with internal delays only while the fade is active.
+- Soundbar main-state watching now ignores attribute-only changes; the separate volume-level trigger exists only when manual-volume learning is enabled.
+- Changed the blueprint automation mode to `parallel` so immediate TTS/Assist/condition/source events remain responsive while a boundary fade run is active.
+
 ## 2026.09.08.3
 
 ### Added
