@@ -28,10 +28,11 @@ blueprint:
     own persistent dashboard slider. No-area or ambiguous matches fall back to the
     global maximum, and the quiet/minimum endpoint remains global.
 
-    Automatic restore/handoff changes use a guarded fixed-step transition. The
-    volume advances every five seconds and stops if the user or another control
-    changes the soundbar away from the expected intermediate value. Direct
-    minimum-volume requests remain immediate.
+    Automatic restore/handoff changes use guarded fixed-step transitions. There
+    is no permanent polling trigger: the automation starts one fade run only when
+    a configured transition window begins, then waits five seconds between steps
+    inside that active run. Outside a transition it sleeps until a real state/time
+    event occurs. Direct minimum-volume requests remain immediate.
 
     EQ follow uses media-player state plus common content attributes such as
     app_name, media_title, media_content_type and source. Optional classifier
@@ -434,6 +435,11 @@ variables:
   apply_night_mode: !input apply_night_mode
   apply_eq_follow: !input apply_eq_follow
 
+trigger_variables:
+  quiet_start_trigger_time: !input quiet_start
+  transition_before_trigger_value: !input transition_before
+  volume_follow_trigger_enabled: !input apply_volume_follow
+
 triggers:
   - trigger: homeassistant
     event: start
@@ -444,18 +450,29 @@ triggers:
   - trigger: time
     at: !input quiet_end
     id: quiet_end
-  - trigger: time_pattern
-    seconds: "/5"
-    id: transition_tick
-    enabled: !input apply_volume_follow
-  - trigger: time_pattern
-    minutes: "/1"
-    seconds: "0"
-    id: policy_tick
-    enabled: !input apply_volume_follow
+  - trigger: template
+    value_template: >-
+      {% set p = quiet_start_trigger_time.split(':') | map('int') | list %}
+      {% set quiet_start_s = p[0] * 3600 + p[1] * 60
+         + (p[2] if p | length > 2 else 0) %}
+      {% set before_s =
+         (transition_before_trigger_value.get('hours', 0) | int) * 3600
+         + (transition_before_trigger_value.get('minutes', 0) | int) * 60
+         + (transition_before_trigger_value.get('seconds', 0) | int) %}
+      {% set current_s = now().hour * 3600 + now().minute * 60 + now().second %}
+      {% set until_start = (quiet_start_s - current_s + 86400) % 86400 %}
+      {{ volume_follow_trigger_enabled and before_s > 0
+         and 0 < until_start <= before_s }}
+    id: transition_before_start
   - trigger: state
     entity_id: !input ultimea_players
-    id: bar_change
+    to: null
+    id: bar_state_change
+  - trigger: state
+    entity_id: !input ultimea_players
+    attribute: volume_level
+    id: bar_volume_change
+    enabled: !input learn_manual_volume_changes
   - trigger: state
     entity_id: !input min_volume_helper
     id: volume_source
@@ -659,7 +676,7 @@ actions:
           {{ scheduled_volume }}
         {% endif %}
       bar_volume_changed: >-
-        {{ trigger_id == 'bar_change'
+        {{ trigger_id == 'bar_volume_change'
            and trigger.from_state is not none
            and trigger.to_state is not none
            and trigger.from_state.attributes.get('volume_level') != trigger.to_state.attributes.get('volume_level')
@@ -670,7 +687,7 @@ actions:
            and (state_attr(trigger_entity, 'volume_level') | float(0)
                 - trigger.to_state.attributes.get('volume_level') | float(0)) | abs <= 0.004 }}
       bar_became_on: >-
-        {{ trigger_id == 'bar_change'
+        {{ trigger_id == 'bar_state_change'
            and trigger.from_state is not none
            and trigger.to_state is not none
            and trigger.from_state.state != 'on'
@@ -847,7 +864,7 @@ actions:
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ trigger_id == 'bar_change' and not bar_became_on }}"
+            value_template: "{{ trigger_id == 'bar_state_change' and not bar_became_on }}"
         sequence:
           - stop: ULTIMEA state change left untouched.
 
@@ -860,15 +877,12 @@ actions:
           - condition: template
             value_template: >-
               {{ apply_volume_follow
-                 and (
-                   (trigger_id == 'transition_tick'
-                    and (before_transition_active or after_transition_active))
-                   or (trigger_id == 'policy_tick'
-                       and not before_transition_active
-                       and not after_transition_active)
-                   or trigger_id not in ['transition_tick', 'policy_tick',
-                                         'audio_input_change']
-                 ) }}
+                 and (trigger_id in [
+                   'startup', 'quiet_start', 'quiet_end',
+                   'transition_before_start', 'volume_source',
+                   'low_binary_change', 'list_change', 'tts_change',
+                   'voice_change', 'night_override_change'
+                 ] or bar_became_on) }}
         sequence:
           - repeat:
               for_each: "{{ ultimea_players }}"
@@ -1238,7 +1252,7 @@ actions:
                     source_trigger_affects_bar: >-
                       {% if trigger_id == 'startup' %}
                         true
-                      {% elif trigger_id == 'bar_change' %}
+                      {% elif trigger_id == 'bar_state_change' %}
                         {{ trigger_entity == bar and bar_became_on }}
                       {% elif trigger_id == 'audio_input_change' %}
                         {% set trigger_area = area_id(trigger_entity) or '' %}
@@ -1332,7 +1346,7 @@ actions:
                     mode_trigger_affects_bar: >-
                       {% if trigger_id in ['startup', 'quiet_start', 'quiet_end'] %}
                         true
-                      {% elif trigger_id == 'bar_change' %}
+                      {% elif trigger_id == 'bar_state_change' %}
                         {{ trigger_entity == bar and bar_became_on }}
                       {% elif trigger_id in ['night_override_change', 'connected_change', 'classifier_change'] %}
                         {% set trigger_area = area_id(trigger_entity) or '' %}
@@ -1457,6 +1471,330 @@ actions:
                                   data:
                                     sound_mode: "{{ normal_sound_mode }}"
 
-mode: queued
+
+  # Event-driven quiet-boundary fade runner. This block is entered only once when
+  # the pre-quiet transition begins, once at quiet_end for the after-transition,
+  # or on Home Assistant startup if startup occurs inside an active transition.
+  # The five-second cadence below is an internal delay in this single run; there is
+  # no time_pattern trigger waking the automation continuously.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ apply_volume_follow
+                 and trigger_id in ['transition_before_start', 'quiet_end', 'startup']
+                 and (before_transition_active or after_transition_active) }}
+        sequence:
+          - variables:
+              fade_phase: >-
+                {{ 'before' if before_transition_active else 'after' }}
+              fade_interrupted_bars: []
+              fade_policy_grace_seconds: >-
+                {{ [10, (handoff_transition_seconds | int) + 10] | max }}
+          - repeat:
+              while:
+                - condition: template
+                  value_template: >-
+                    {% set current_s = now().hour * 3600 + now().minute * 60 + now().second %}
+                    {% set until_start = (quiet_start_seconds - current_s + 86400) % 86400 %}
+                    {% set since_end = (current_s - quiet_end_seconds + 86400) % 86400 %}
+                    {% if fade_phase == 'before' %}
+                      {{ transition_before_seconds > 0
+                         and 0 < until_start <= transition_before_seconds }}
+                    {% else %}
+                      {{ transition_after_seconds > 0
+                         and since_end < transition_after_seconds }}
+                    {% endif %}
+              sequence:
+                - variables:
+                    fade_now_seconds: >-
+                      {{ now().hour * 3600 + now().minute * 60 + now().second }}
+                    fade_seconds_until_start: >-
+                      {{ (quiet_start_seconds - fade_now_seconds + 86400) % 86400 }}
+                    fade_seconds_since_end: >-
+                      {{ (fade_now_seconds - quiet_end_seconds + 86400) % 86400 }}
+                - repeat:
+                    for_each: "{{ ultimea_players }}"
+                    sequence:
+                      - variables:
+                          bar: "{{ repeat.item }}"
+                          bar_area: "{{ area_id(repeat.item) or '' }}"
+                          fade_binary_low: >-
+                            {% set ns = namespace(active=false) %}
+                            {% for entity in low_volume_binary_entities %}
+                              {% set entity_area = area_id(entity) or '' %}
+                              {% if is_state(entity, 'on')
+                                    and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                                {% set ns.active = true %}
+                              {% endif %}
+                            {% endfor %}
+                            {{ ns.active }}
+                          fade_tts_low: >-
+                            {% set ns = namespace(active=false) %}
+                            {% for entity in tts_media_players %}
+                              {% set entity_area = area_id(entity) or '' %}
+                              {% if states(entity) in ['playing', 'buffering']
+                                    and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                                {% set ns.active = true %}
+                              {% endif %}
+                            {% endfor %}
+                            {{ ns.active }}
+                          fade_voice_low: >-
+                            {% set ns = namespace(active=false) %}
+                            {% for entity in voice_assistants %}
+                              {% set entity_area = area_id(entity) or '' %}
+                              {% if states(entity) not in ['idle', 'unknown', 'unavailable']
+                                    and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                                {% set ns.active = true %}
+                              {% endif %}
+                            {% endfor %}
+                            {{ ns.active }}
+                          fade_night_low: >-
+                            {% set ns = namespace(active=false) %}
+                            {% for entity in night_mode_entities %}
+                              {% set entity_area = area_id(entity) or '' %}
+                              {% if is_state(entity, 'on')
+                                    and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                                {% set ns.active = true %}
+                              {% endif %}
+                            {% endfor %}
+                            {{ ns.active }}
+                          fade_list_low: >-
+                            {{ '*' in room_list_area_ids
+                               or (bar_area != '' and bar_area in room_list_area_ids) }}
+                          fade_zone_volume_matches: >-
+                            {% set ns = namespace(matches=[]) %}
+                            {% set candidates = [zone_volume_entities]
+                               if zone_volume_entities is string else zone_volume_entities %}
+                            {% if bar_area != '' %}
+                              {% for entity in candidates %}
+                                {% if (area_id(entity) or '') == bar_area %}
+                                  {% set ns.matches = ns.matches + [entity] %}
+                                {% endif %}
+                              {% endfor %}
+                            {% endif %}
+                            {{ ns.matches }}
+                          fade_zone_volume_entity: >-
+                            {{ fade_zone_volume_matches[0]
+                               if fade_zone_volume_matches | length == 1 else '' }}
+                      - variables:
+                          fade_extra_low: >-
+                            {{ fade_binary_low or fade_tts_low or fade_voice_low
+                               or fade_night_low or fade_list_low }}
+                          fade_zone_max_candidate: >-
+                            {% if fade_zone_volume_entity %}
+                              {% set scale = state_attr(fade_zone_volume_entity, 'max') | float(0) %}
+                              {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
+                              {% set raw = states(fade_zone_volume_entity) | float(fallback) %}
+                              {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+                              {{ [[normalized, 0.0] | max, 1.0] | min }}
+                            {% else %}
+                              {{ max_volume }}
+                            {% endif %}
+                          fade_bar_max_volume: >-
+                            {{ [min_volume, fade_zone_max_candidate] | max }}
+                          fade_scheduled_volume: >-
+                            {% if fade_phase == 'before' and transition_before_seconds > 0 %}
+                              {% set progress = 1 - (fade_seconds_until_start / transition_before_seconds) %}
+                              {{ fade_bar_max_volume
+                                 - ((fade_bar_max_volume - min_volume) * progress) }}
+                            {% elif fade_phase == 'after' and transition_after_seconds > 0 %}
+                              {% set progress = fade_seconds_since_end / transition_after_seconds %}
+                              {{ min_volume
+                                 + ((fade_bar_max_volume - min_volume) * progress) }}
+                            {% else %}
+                              {{ min_volume if fade_phase == 'before' else fade_bar_max_volume }}
+                            {% endif %}
+                          fade_previous_scheduled_volume: >-
+                            {% if fade_phase == 'before' and transition_before_seconds > 0 %}
+                              {% set step = ((fade_bar_max_volume - min_volume) * 5
+                                             / transition_before_seconds) %}
+                              {{ [fade_bar_max_volume, fade_scheduled_volume + step] | min }}
+                            {% elif fade_phase == 'after' and transition_after_seconds > 0 %}
+                              {% set step = ((fade_bar_max_volume - min_volume) * 5
+                                             / transition_after_seconds) %}
+                              {{ [min_volume, fade_scheduled_volume - step] | max }}
+                            {% else %}
+                              {{ fade_scheduled_volume }}
+                            {% endif %}
+                          fade_current_volume: >-
+                            {{ state_attr(bar, 'volume_level') | float(-1) }}
+                          fade_recent_policy_change: >-
+                            {% set cutoff = as_timestamp(now()) - fade_policy_grace_seconds %}
+                            {% set ns = namespace(recent=false) %}
+                            {% for entity in low_volume_binary_entities
+                                 + tts_media_players + voice_assistants + night_mode_entities %}
+                              {% set obj = expand(entity) | first %}
+                              {% set entity_area = area_id(entity) or '' %}
+                              {% if obj is not none
+                                    and (entity_area == '' or (bar_area != '' and entity_area == bar_area))
+                                    and as_timestamp(obj.last_changed) >= cutoff %}
+                                {% set ns.recent = true %}
+                              {% endif %}
+                            {% endfor %}
+                            {% for entity in list_state_entities %}
+                              {% set obj = expand(entity) | first %}
+                              {% if obj is not none and as_timestamp(obj.last_changed) >= cutoff %}
+                                {% set ns.recent = true %}
+                              {% endif %}
+                            {% endfor %}
+                            {% for entity in [min_volume_entity, max_volume_entity, fade_zone_volume_entity] %}
+                              {% if entity %}
+                                {% set obj = expand(entity) | first %}
+                                {% if obj is not none and as_timestamp(obj.last_changed) >= cutoff %}
+                                  {% set ns.recent = true %}
+                                {% endif %}
+                              {% endif %}
+                            {% endfor %}
+                            {% set bar_obj = expand(bar) | first %}
+                            {% if bar_obj is not none
+                                  and is_state(bar, 'on')
+                                  and as_timestamp(bar_obj.last_changed) >= cutoff %}
+                              {% set ns.recent = true %}
+                            {% endif %}
+                            {{ ns.recent }}
+                          fade_manual_mismatch: >-
+                            {{ not fade_extra_low
+                               and fade_current_volume >= 0
+                               and not fade_recent_policy_change
+                               and (fade_current_volume
+                                    - fade_previous_scheduled_volume) | abs > 0.015 }}
+                      - if:
+                          - condition: template
+                            value_template: >-
+                              {{ fade_manual_mismatch and bar not in fade_interrupted_bars }}
+                        then:
+                          - variables:
+                              fade_interrupted_bars: >-
+                                {{ fade_interrupted_bars + [bar] }}
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: >-
+                                  {{ is_state(bar, 'on')
+                                     and bar not in fade_interrupted_bars
+                                     and fade_extra_low
+                                     and (fade_current_volume < 0
+                                          or (fade_current_volume - min_volume) | abs > 0.009) }}
+                            sequence:
+                              - action: media_player.volume_set
+                                continue_on_error: true
+                                target:
+                                  entity_id: "{{ bar }}"
+                                data:
+                                  volume_level: "{{ [[min_volume, 0.0] | max, 1.0] | min | round(2) }}"
+                          - conditions:
+                              - condition: template
+                                value_template: >-
+                                  {{ is_state(bar, 'on')
+                                     and bar not in fade_interrupted_bars
+                                     and not fade_extra_low
+                                     and not (fade_recent_policy_change
+                                              and (fade_current_volume
+                                                   - fade_previous_scheduled_volume) | abs > 0.015)
+                                     and (fade_current_volume < 0
+                                          or (fade_current_volume
+                                              - fade_scheduled_volume) | abs > 0.009) }}
+                            sequence:
+                              - action: media_player.volume_set
+                                continue_on_error: true
+                                target:
+                                  entity_id: "{{ bar }}"
+                                data:
+                                  volume_level: >-
+                                    {{ [[fade_scheduled_volume, 0.0] | max, 1.0] | min | round(2) }}
+                - delay: "00:00:05"
+          - if:
+              - condition: template
+                value_template: "{{ fade_phase == 'after' }}"
+            then:
+              - repeat:
+                  for_each: "{{ ultimea_players }}"
+                  sequence:
+                    - variables:
+                        bar: "{{ repeat.item }}"
+                        bar_area: "{{ area_id(repeat.item) or '' }}"
+                        final_zone_matches: >-
+                          {% set ns = namespace(matches=[]) %}
+                          {% set candidates = [zone_volume_entities]
+                             if zone_volume_entities is string else zone_volume_entities %}
+                          {% if bar_area != '' %}
+                            {% for entity in candidates %}
+                              {% if (area_id(entity) or '') == bar_area %}
+                                {% set ns.matches = ns.matches + [entity] %}
+                              {% endif %}
+                            {% endfor %}
+                          {% endif %}
+                          {{ ns.matches }}
+                        final_zone_entity: >-
+                          {{ final_zone_matches[0]
+                             if final_zone_matches | length == 1 else '' }}
+                        final_low: >-
+                          {% set ns = namespace(active=false) %}
+                          {% for entity in low_volume_binary_entities %}
+                            {% set entity_area = area_id(entity) or '' %}
+                            {% if is_state(entity, 'on')
+                                  and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                              {% set ns.active = true %}
+                            {% endif %}
+                          {% endfor %}
+                          {% for entity in tts_media_players %}
+                            {% set entity_area = area_id(entity) or '' %}
+                            {% if states(entity) in ['playing', 'buffering']
+                                  and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                              {% set ns.active = true %}
+                            {% endif %}
+                          {% endfor %}
+                          {% for entity in voice_assistants %}
+                            {% set entity_area = area_id(entity) or '' %}
+                            {% if states(entity) not in ['idle', 'unknown', 'unavailable']
+                                  and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                              {% set ns.active = true %}
+                            {% endif %}
+                          {% endfor %}
+                          {% for entity in night_mode_entities %}
+                            {% set entity_area = area_id(entity) or '' %}
+                            {% if is_state(entity, 'on')
+                                  and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                              {% set ns.active = true %}
+                            {% endif %}
+                          {% endfor %}
+                          {% if '*' in room_list_area_ids
+                                or (bar_area != '' and bar_area in room_list_area_ids) %}
+                            {% set ns.active = true %}
+                          {% endif %}
+                          {{ ns.active }}
+                    - variables:
+                        final_zone_max_candidate: >-
+                          {% if final_zone_entity %}
+                            {% set scale = state_attr(final_zone_entity, 'max') | float(0) %}
+                            {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
+                            {% set raw = states(final_zone_entity) | float(fallback) %}
+                            {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+                            {{ [[normalized, 0.0] | max, 1.0] | min }}
+                          {% else %}
+                            {{ max_volume }}
+                          {% endif %}
+                        final_target: >-
+                          {{ [min_volume, final_zone_max_candidate] | max }}
+                        final_current: >-
+                          {{ state_attr(bar, 'volume_level') | float(-1) }}
+                    - if:
+                        - condition: template
+                          value_template: >-
+                            {{ is_state(bar, 'on')
+                               and bar not in fade_interrupted_bars
+                               and not final_low
+                               and (final_current < 0
+                                    or (final_current - final_target) | abs > 0.009) }}
+                      then:
+                        - action: media_player.volume_set
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ bar }}"
+                          data:
+                            volume_level: "{{ [[final_target, 0.0] | max, 1.0] | min | round(2) }}"
+
+mode: parallel
 max: 20
 max_exceeded: silent

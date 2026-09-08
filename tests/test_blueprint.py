@@ -133,7 +133,12 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     for mode in ("Night", "Movie", "Music", "Voice", "Sport", "Game"):
         assert mode in text
 
-    assert "seconds: \"/5\"" in text
+    assert "trigger: time_pattern" not in text
+    assert "transition_before_start" in text
+    assert "trigger_variables:" in text
+    assert "fade_interrupted_bars" in text
+    assert "fade_recent_policy_change" in text
+    assert "mode: parallel" in text
     assert "manual_differs_from_expected" in text
     assert "learn_manual_volume_changes" in text
     assert "number.set_value" in text
@@ -177,3 +182,16 @@ def test_blueprint_does_not_hardcode_user_entity_ids() -> None:
     assert "media_player.living_room" not in text
     assert "input_number.ultimea" not in text
     assert "binary_sensor." not in text
+
+
+def test_blueprint_has_no_periodic_automation_triggers() -> None:
+    data = _load_blueprint()
+    triggers = data["triggers"]
+    assert all(item["trigger"] != "time_pattern" for item in triggers)
+
+    state_trigger = next(item for item in triggers if item.get("id") == "bar_state_change")
+    assert "to" in state_trigger and state_trigger["to"] is None
+
+    volume_trigger = next(item for item in triggers if item.get("id") == "bar_volume_change")
+    assert volume_trigger["attribute"] == "volume_level"
+    assert volume_trigger["enabled"] == {"!input": "learn_manual_volume_changes"}
