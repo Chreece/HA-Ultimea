@@ -7,11 +7,11 @@ import logging
 from pathlib import Path
 
 from homeassistant.components import bluetooth
-from homeassistant.config import ConfigType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import CoreState, Event, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.typing import ConfigType
 
 from .blueprint_installer import install_bundled_blueprints
 from .const import (
