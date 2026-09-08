@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.05.4-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.06-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -119,6 +119,25 @@ While a persistent BLE connection is open, valid ULTIMEA notifications update en
 ## Bluetooth routing
 
 The integration uses Home Assistant's shared Bluetooth manager and can use supported local adapters or connectable Bluetooth proxies. It does not start/stop global Bluetooth scanning and does not hard-code a local adapter or test-device MAC address.
+
+## Adaptive Room Audio blueprint
+
+The repository includes [`ULTIMEA Adaptive Room Audio`](blueprints/automation/ultimea/adaptive_room_audio.yaml), a room-aware automation blueprint that can:
+
+- learn persistent normal and quiet volume endpoints from the user's own volume changes;
+- apply quiet hours (ώρες κοινής ησυχίας), including smooth before/after boundary fades;
+- lower volume immediately for selected binary conditions, comma-list room sensors, TTS playback, active Assist satellites, or a night-mode boolean;
+- select **Night** during quiet conditions;
+- follow connected-player content into **Movie, Music, Voice, Sport, or Game**, with editable keyword matching and an optional provider-neutral AI/snapshot classification hook;
+- respect manual ULTIMEA volume and sound-mode changes instead of continuously fighting them.
+
+Import it in Home Assistant from:
+
+```text
+https://github.com/Chreece/HA-Ultimea/blob/master/blueprints/automation/ultimea/adaptive_room_audio.yaml
+```
+
+The learned minimum and maximum are stored in two user-selected `input_number` helpers. See [Adaptive Room Audio blueprint documentation](docs/ADAPTIVE_AUDIO_BLUEPRINT.md) for configuration and behavior.
 
 ## Installation
 
