@@ -18,11 +18,11 @@ jobs:
           python-version: "3.13"
       - name: Create test virtual environment
         run: python -m venv .venv
-      - name: Install test dependency
-        run: .venv/bin/python -m pip install --upgrade pytest
+      - name: Install test dependencies
+        run: .venv/bin/python -m pip install --upgrade pytest pyyaml jinja2
       - name: Compile integration
         run: .venv/bin/python -m compileall -q custom_components/ultimea
-      - name: Protocol tests
+      - name: Protocol and blueprint tests
         run: .venv/bin/python -m pytest -q tests
       - name: Validate JSON
         run: |
