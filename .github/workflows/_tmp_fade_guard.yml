@@ -1,0 +1,86 @@
+name: Temporary Fade Guard Patch
+
+on:
+  push:
+    branches:
+      - feature/adaptive-audio-v2
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/adaptive-audio-v2
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Create patch virtual environment
+        run: python -m venv .patch-venv
+      - name: Strengthen fade interruption persistence
+        run: |
+          .patch-venv/bin/python - <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+          bp = root / 'blueprints/automation/ultimea/adaptive_room_audio.yaml'
+          text = bp.read_text(encoding='utf-8')
+          old = '''                    fade_interrupted_by_manual_volume: >-\n                      {{ trigger_id == 'transition_tick'\n                         and not extra_low\n                         and (before_transition_active or after_transition_active)\n                         and current_volume >= 0\n                         and (current_volume - previous_transition_target) | abs > 0.004 }}\n                    tick_can_adjust: >-\n                      {{ trigger_id != 'transition_tick'\n                         or (not extra_low and not fade_interrupted_by_manual_volume) }}\n                - choose:\n                    - conditions:\n                        - condition: template\n                          value_template: >-\n                            {{ is_state(bar, 'on')\n                               and tick_can_adjust\n                               and (current_volume < 0 or (current_volume - desired_volume) | abs > 0.009) }}\n'''
+          new = '''                    fade_interrupted_by_manual_volume: >-\n                      {{ not extra_low\n                         and (before_transition_active or after_transition_active)\n                         and current_volume >= 0\n                         and (current_volume - previous_transition_target) | abs > 0.004 }}\n                    fade_can_adjust: >-\n                      {{ not (before_transition_active or after_transition_active)\n                         or extra_low\n                         or not fade_interrupted_by_manual_volume }}\n                - choose:\n                    - conditions:\n                        - condition: template\n                          value_template: >-\n                            {{ is_state(bar, 'on')\n                               and fade_can_adjust\n                               and (current_volume < 0 or (current_volume - desired_volume) | abs > 0.009) }}\n'''
+          if text.count(old) != 1:
+              raise SystemExit(f'fade block match count={text.count(old)}')
+          text = text.replace(old, new, 1)
+          bp.write_text(text, encoding='utf-8')
+          (root / 'custom_components/ultimea/blueprints/adaptive_room_audio.yaml').write_bytes(bp.read_bytes())
+
+          test_path = root / 'tests/test_blueprint.py'
+          tests = test_path.read_text(encoding='utf-8')
+          tests = tests.replace('''    assert "fade_interrupted_by_manual_volume" in text\n    assert "manual_in_time_transition" in text\n''', '''    assert "fade_interrupted_by_manual_volume" in text\n    assert "fade_can_adjust" in text\n    assert "manual_in_time_transition" in text\n''')
+          test_path.write_text(tests, encoding='utf-8')
+
+          changelog_path = root / 'CHANGELOG.md'
+          changelog = changelog_path.read_text(encoding='utf-8')
+          changelog = changelog.replace(
+              'leave the user\'s value alone until the transition window ends or another room condition changes.',
+              'leave the user\'s value alone for the rest of that transition window. Direct minimum-volume conditions can still override the user value while active.'
+          )
+          changelog_path.write_text(changelog, encoding='utf-8')
+          (root / 'custom_components/ultimea/CHANGELOG.md').write_text(changelog, encoding='utf-8')
+
+          docs_path = root / 'docs/ADAPTIVE_AUDIO_BLUEPRINT.md'
+          docs = docs_path.read_text(encoding='utf-8')
+          docs = docs.replace(
+              'subsequent fade ticks for that soundbar stop until the transition window ends or another room condition changes.',
+              'the fade stays stopped for that soundbar for the rest of the transition window. A direct minimum-volume condition such as TTS can still override while it is active.'
+          )
+          docs_path.write_text(docs, encoding='utf-8')
+
+          for notes_path in (
+              root / 'RELEASE_NOTES_2026.09.08.1.md',
+              root / 'custom_components/ultimea/RELEASE_NOTES_2026.09.08.1.md',
+          ):
+              notes = notes_path.read_text(encoding='utf-8')
+              notes = notes.replace(
+                  'stops that fade for the affected bar; the one-minute reconciliation cannot restart it while the fade window remains active.',
+                  'stops that fade for the affected bar for the rest of the transition window; the one-minute reconciliation and unrelated policy events cannot restart it. Direct minimum-volume conditions can still apply immediately.'
+              )
+              notes_path.write_text(notes, encoding='utf-8')
+
+          Path('.github/workflows/_tmp_fade_guard.yml').unlink()
+          PY
+      - name: Install test dependencies
+        run: .patch-venv/bin/python -m pip install --upgrade pytest pyyaml jinja2
+      - name: Run full tests
+        run: .patch-venv/bin/python -m pytest -q tests
+      - name: Commit patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Keep interrupted quiet-hour fades stopped'
+          git push origin HEAD:feature/adaptive-audio-v2
