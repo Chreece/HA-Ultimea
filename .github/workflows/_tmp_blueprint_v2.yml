@@ -1,0 +1,37 @@
+name: Temporary Adaptive Audio V2 Transformer
+
+on:
+  push:
+    branches:
+      - feature/adaptive-audio-v2
+
+permissions:
+  contents: write
+
+jobs:
+  transform:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: feature/adaptive-audio-v2
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.13'
+      - name: Create transformer virtual environment
+        run: python -m venv .transform-venv
+      - name: Apply adaptive audio v2 changes
+        run: .transform-venv/bin/python scripts/_tmp_adaptive_audio_v2.py
+      - name: Install test dependencies
+        run: .transform-venv/bin/python -m pip install --upgrade pytest pyyaml jinja2
+      - name: Run full tests
+        run: .transform-venv/bin/python -m pytest -q tests
+      - name: Commit transformed files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Refine adaptive audio room policy inputs and fade guard'
+          git push origin HEAD:feature/adaptive-audio-v2
