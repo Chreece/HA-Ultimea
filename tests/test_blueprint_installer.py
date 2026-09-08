@@ -106,3 +106,16 @@ def test_identical_manual_copy_is_safely_adopted_for_future_updates(
     upgraded = installer.install_bundled_blueprints(config, bundled_dir=source)
     assert upgraded.updated == (installer.BLUEPRINT_RELATIVE_PATH,)
     assert target.read_text(encoding="utf-8") == "blueprint: newer\n"
+
+
+def test_integration_reloads_live_automations_after_blueprint_update() -> None:
+    init_text = (ROOT / "custom_components" / "ultimea" / "__init__.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "_async_reload_blueprint_automations" in init_text
+    assert "automations_with_blueprint" in init_text
+    assert 'hass.services.async_call("automation", "reload"' in init_text
+    assert '"id": automation_id' in init_text
+    assert "EVENT_HOMEASSISTANT_STARTED" in init_text
+    assert "full_reload=bool(result.installed)" in init_text
