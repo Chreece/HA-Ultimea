@@ -4,13 +4,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import logging
+from pathlib import Path
 
 from homeassistant.components import bluetooth
+from homeassistant.config import ConfigType
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import CoreState, Event, HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
+from .blueprint_installer import install_bundled_blueprints
 from .const import (
     CONF_ABILITY_FLAGS, CONF_CAPABILITIES, CONF_DISCONNECT_DELAY, CONF_FIRMWARE,
     CONF_HEARTBEAT_INTERVAL, CONF_KEEP_CONNECTED, CONF_MODEL, CONF_PROFILE,
@@ -84,6 +87,42 @@ async def _async_post_start_refresh(entry: ConfigEntry, device: UltimeaDevice) -
         _LOGGER.debug("Post-start ULTIMEA full status refresh failed: %s", err)
         return
     _store_runtime_probe(entry, device)
+
+
+async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
+    """Set up integration-wide resources before config entries are loaded."""
+    try:
+        result = await hass.async_add_executor_job(
+            install_bundled_blueprints,
+            Path(hass.config.config_dir),
+        )
+    except OSError:
+        # A blueprint installation problem must never prevent the soundbar
+        # integration itself from loading.
+        _LOGGER.exception("Unable to install bundled ULTIMEA automation blueprint")
+        return True
+
+    if result.installed:
+        _LOGGER.info("Installed ULTIMEA automation blueprint: %s", ", ".join(result.installed))
+    if result.updated:
+        _LOGGER.info("Updated managed ULTIMEA automation blueprint: %s", ", ".join(result.updated))
+    if result.preserved:
+        _LOGGER.debug(
+            "Preserved user-modified/unmanaged ULTIMEA blueprint: %s",
+            ", ".join(result.preserved),
+        )
+
+    # If Automation is already loaded, discard its blueprint cache so a newly
+    # installed or safely updated file is visible immediately in the UI. If it
+    # is not loaded yet, its normal startup scan will find the file.
+    if result.changed and "automation" in hass.config.components:
+        from homeassistant.components.automation.helpers import (  # noqa: PLC0415
+            async_get_blueprints,
+        )
+
+        await async_get_blueprints(hass).async_reset_cache()
+
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
