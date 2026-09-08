@@ -1,0 +1,2043 @@
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+PUBLIC_BP = ROOT / "blueprints" / "automation" / "ultimea" / "adaptive_room_audio.yaml"
+BUNDLED_BP = ROOT / "custom_components" / "ultimea" / "blueprints" / "adaptive_room_audio.yaml"
+DOC = ROOT / "docs" / "ADAPTIVE_AUDIO_BLUEPRINT.md"
+README = ROOT / "README.md"
+CHANGELOG = ROOT / "CHANGELOG.md"
+COMPONENT_CHANGELOG = ROOT / "custom_components" / "ultimea" / "CHANGELOG.md"
+MANIFEST = ROOT / "custom_components" / "ultimea" / "manifest.json"
+TEST = ROOT / "tests" / "test_blueprint.py"
+VERSION = "2026.09.08.2"
+
+
+def replace_between(text: str, start: str, end: str, replacement: str) -> str:
+    i = text.index(start)
+    j = text.index(end, i)
+    return text[:i] + replacement + text[j:]
+
+
+def room_list_template(input_name: str) -> str:
+    return f'''        {{% set ns = namespace(area_ids=[]) %}}
+        {{% for holder in {input_name} %}}
+          {{% set obj = expand(holder) | first %}}
+          {{% if obj is not none %}}
+            {{% for raw in (obj.state | string).split(',') %}}
+              {{% set token = raw | trim %}}
+              {{% if token %}}
+                {{% if token | lower in ['all', '*'] %}}
+                  {{% set ns.area_ids = ns.area_ids + ['*'] %}}
+                {{% else %}}
+                  {{% set resolved = token if token in areas() else area_id(token) %}}
+                  {{% if resolved %}}
+                    {{% set ns.area_ids = ns.area_ids + [resolved] %}}
+                  {{% endif %}}
+                {{% endif %}}
+              {{% endif %}}
+            {{% endfor %}}
+            {{% for value in obj.attributes.values() %}}
+              {{% if value is string and ',' in value %}}
+                {{% for raw in value.split(',') %}}
+                  {{% set token = raw | trim %}}
+                  {{% if token %}}
+                    {{% if token | lower in ['all', '*'] %}}
+                      {{% set ns.area_ids = ns.area_ids + ['*'] %}}
+                    {{% else %}}
+                      {{% set resolved = token if token in areas() else area_id(token) %}}
+                      {{% if resolved %}}
+                        {{% set ns.area_ids = ns.area_ids + [resolved] %}}
+                      {{% endif %}}
+                    {{% endif %}}
+                  {{% endif %}}
+                {{% endfor %}}
+              {{% elif value is iterable and value is not string and value is not mapping %}}
+                {{% for raw in value %}}
+                  {{% set token = raw | string | trim %}}
+                  {{% if token %}}
+                    {{% if token | lower in ['all', '*'] %}}
+                      {{% set ns.area_ids = ns.area_ids + ['*'] %}}
+                    {{% else %}}
+                      {{% set resolved = token if token in areas() else area_id(token) %}}
+                      {{% if resolved %}}
+                        {{% set ns.area_ids = ns.area_ids + [resolved] %}}
+                      {{% endif %}}
+                    {{% endif %}}
+                  {{% endif %}}
+                {{% endfor %}}
+              {{% endif %}}
+            {{% endfor %}}
+          {{% endif %}}
+        {{% endfor %}}
+        {{{{ ns.area_ids | unique | list }}}}'''
+
+
+manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+if manifest["version"] == VERSION:
+    print(f"Already transformed to {VERSION}")
+    raise SystemExit(0)
+if manifest["version"] != "2026.09.08.1":
+    raise RuntimeError(f"Unexpected source version {manifest['version']}")
+
+bp = PUBLIC_BP.read_text(encoding="utf-8")
+
+old_description = '''    "Room-list" entities may expose rooms in their state as comma-separated area
+    IDs/names/entity IDs, or in attributes as lists or comma-separated strings.
+    Any token that resolves to the same area as a soundbar requests minimum volume.
+    The special values `all` and `*` apply globally.
+
+    EQ follow uses media-player state plus common content attributes such as
+'''
+new_description = '''    The policy engine supports room-scoped and global room-list sources, zero/mute
+    overrides, minimum-volume conditions, ambient-noise boosts, connected-device
+    activity gates, Night conditions and EQ gates. Every condition group has both
+    Home Assistant's rich visual condition editor and a Jinja template alternative.
+    Room-list entities may provide comma-separated room tokens in state or list /
+    comma-string attributes. Selected devices, media players and labels can define
+    what is physically connected to each soundbar.
+
+    EQ follow uses media-player state plus common content attributes such as
+'''
+if old_description not in bp:
+    raise RuntimeError("Blueprint description marker not found")
+bp = bp.replace(old_description, new_description, 1)
+
+condition_sections = '''    minimum_conditions:
+      name: Minimum-volume conditions
+      icon: mdi:volume-low
+      collapsed: false
+      input:
+        low_volume_binary_entities:
+          name: Binary entities
+          description: >-
+            On binary_sensor/input_boolean entities request minimum volume for a
+            soundbar in the same area. Entities without an area are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - binary_sensor
+                    - input_boolean
+        list_state_entities:
+          name: Room-scoped room-list entities
+          description: >-
+            State may contain comma-separated area IDs/names/entity IDs. Attributes
+            may be lists or comma-separated strings. Only the matching soundbar
+            room is lowered. `all` and `*` still match every bar.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        global_list_state_entities:
+          name: Global room-list entities
+          description: >-
+            Same parsing as the room-scoped list above, but any valid room token
+            makes every selected soundbar request minimum volume. This reproduces
+            policies such as "if any sleeping room exists, lower all bars".
+          default: []
+          selector:
+            entity:
+              multiple: true
+        tts_media_players:
+          name: TTS / announcement media players
+          description: >-
+            A selected media player in playing/buffering state lowers bars in the
+            same area. Players without an area are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        voice_assistants:
+          name: Voice assistants
+          description: >-
+            A selected Assist Satellite in a non-idle state lowers bars in the
+            same area. Satellites without an area are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: assist_satellite
+        minimum_ha_conditions:
+          name: Additional minimum-volume condition
+          description: >-
+            Optional rich Home Assistant condition editor. Build nested AND/OR,
+            state, numeric-state, time, device, zone or template conditions. When
+            this list is non-empty and all selected conditions pass, Min is
+            requested. Template conditions may use `bar`, `bar_area`,
+            `in_quiet_hours`, `min_volume`, `max_volume` and `trigger_id`.
+          default: []
+          selector:
+            condition: {}
+        minimum_condition_template:
+          name: Minimum-volume template
+          description: >-
+            Optional Jinja alternative to the visual condition editor. Return true
+            to request Min for the current `bar`. `bar_area`, `in_quiet_hours`,
+            `min_volume`, `max_volume` and `trigger_id` are available.
+          default: "{{ false }}"
+          selector:
+            template: {}
+
+    zero_conditions:
+      name: Zero / mute priority conditions
+      icon: mdi:volume-off
+      collapsed: true
+      input:
+        zero_binary_entities:
+          name: Zero/mute binary entities
+          description: >-
+            On binary_sensor/input_boolean entities activate the zero/mute priority
+            for the same room; entities without an area are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - binary_sensor
+                    - input_boolean
+        zero_room_list_entities:
+          name: Zero/mute room-scoped room lists
+          description: Room-list sources that affect only matching soundbar rooms.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        zero_global_list_entities:
+          name: Zero/mute global room lists
+          description: Any valid room token in these sources affects every selected bar.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        zero_ha_conditions:
+          name: Additional zero/mute condition
+          description: >-
+            Optional rich Home Assistant condition. If non-empty and true, the
+            zero/mute priority activates for the current bar.
+          default: []
+          selector:
+            condition: {}
+        zero_condition_template:
+          name: Zero/mute template
+          description: Return true to activate the zero/mute priority for `bar`.
+          default: "{{ false }}"
+          selector:
+            template: {}
+        zero_effect:
+          name: Zero/mute effect
+          description: Choose how the bar reacts while a zero/mute condition is active.
+          default: Volume 0
+          selector:
+            select:
+              options:
+                - Volume 0
+                - Mute
+                - Volume 0 and mute
+        unmute_when_zero_clears:
+          name: Unmute when zero/mute clears
+          description: >-
+            Off is safest and never overrides a user's manual mute. Enable only if
+            this automation owns mute state and should unmute on the next non-zero
+            policy evaluation.
+          default: false
+          selector:
+            boolean: {}
+        zero_extra_actions:
+          name: Optional zero/mute actions
+          description: >-
+            Extra actions executed while the zero/mute priority is active. The
+            current `bar` and `bar_area` variables are available to templates.
+          default: []
+          selector:
+            action: {}
+
+    ambient_boost:
+      name: Ambient-noise volume boost
+      icon: mdi:volume-plus
+      collapsed: true
+      input:
+        boost_binary_entities:
+          name: Noisy binary entities
+          description: On entities activate the boost for the same room; no-area entities are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - binary_sensor
+                    - input_boolean
+        boost_room_list_entities:
+          name: Noisy room-scoped room lists
+          description: Room-list sources whose matching room activates the boost.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        boost_global_list_entities:
+          name: Noisy global room lists
+          description: Any valid room token activates the boost for every selected bar.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        boost_ha_conditions:
+          name: Additional noise/boost condition
+          description: Optional rich Home Assistant condition for the current bar.
+          default: []
+          selector:
+            condition: {}
+        boost_condition_template:
+          name: Noise/boost template
+          description: Return true to activate the boost for the current `bar`.
+          default: "{{ false }}"
+          selector:
+            template: {}
+        boost_amount_value:
+          name: Boost amount
+          description: Fixed percentage points added while the boost is active.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 50
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+        boost_amount_entity:
+          name: Boost amount entity (optional)
+          description: >-
+            Optional input_number/number/sensor overriding the fixed amount.
+            0..1 values are treated as a fraction; 0..100 values as percentage points.
+            Select at most one entity.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - input_number
+                    - number
+                    - sensor
+        boost_apply_when:
+          name: Apply boost in
+          default: Minimum-volume conditions
+          selector:
+            select:
+              options:
+                - Minimum-volume conditions
+                - Normal operation
+                - Minimum and normal
+        boost_cap:
+          name: Boost cap
+          description: Cap boosted volume at the learned maximum or at 100%.
+          default: Maximum endpoint
+          selector:
+            select:
+              options:
+                - Maximum endpoint
+                - 100%
+
+    night_conditions:
+      name: Night-mode conditions
+      icon: mdi:weather-night
+      collapsed: true
+      input:
+        night_mode_entities:
+          name: Night booleans / binary sensors
+          description: On entities request Night for the same area; no-area entities are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - binary_sensor
+                    - input_boolean
+        night_room_list_entities:
+          name: Night room-scoped room lists
+          description: Matching room tokens request Night for that soundbar.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        night_global_list_entities:
+          name: Night global room lists
+          description: Any valid room token requests Night for every selected bar.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        night_ha_conditions:
+          name: Additional Night condition
+          description: Optional rich Home Assistant condition for the current bar.
+          default: []
+          selector:
+            condition: {}
+        night_condition_template:
+          name: Night template
+          description: Return true to request Night for the current `bar`.
+          default: "{{ false }}"
+          selector:
+            template: {}
+        night_conditions_request_minimum:
+          name: Night conditions also request minimum volume
+          description: >-
+            When enabled, Night conditions outside the scheduled quiet hours also
+            request Min immediately, matching the original Night boolean behavior.
+          default: true
+          selector:
+            boolean: {}
+
+    policy_gate:
+      name: Connected-device activity and reevaluation
+      icon: mdi:connection
+      collapsed: true
+      input:
+        connected_activity_mode:
+          name: Volume policy activity gate
+          description: >-
+            Optionally control volume only when a selected connected player for
+            the soundbar is active or actually playing.
+          default: Always manage
+          selector:
+            select:
+              options:
+                - Always manage
+                - Require active connected player
+                - Require playing connected player
+        connected_activity_ha_conditions:
+          name: Additional connected/activity condition
+          description: >-
+            Optional rich Home Assistant condition that must pass in addition to
+            the selected connected-player mode. Empty means no additional gate.
+          default: []
+          selector:
+            condition: {}
+        connected_activity_template:
+          name: Connected/activity template
+          description: >-
+            Template AND-gate for volume policy. Return true to allow management
+            of the current `bar`; `bar_area`, `connected_player_count`,
+            `connected_active_count` and `connected_playing_count` are available.
+          default: "{{ true }}"
+          selector:
+            template: {}
+        inactive_policy_behavior:
+          name: When the connected/activity gate is false
+          default: Leave unchanged
+          selector:
+            select:
+              options:
+                - Leave unchanged
+                - Set volume 0
+        extra_policy_trigger_entities:
+          name: Extra condition/template trigger entities
+          description: >-
+            Select entities referenced by custom conditions/templates when you
+            want immediate reevaluation on state change. Otherwise the one-minute
+            recovery tick will eventually reevaluate volume policy.
+          default: []
+          selector:
+            entity:
+              multiple: true
+
+'''
+
+bp = replace_between(bp, "    low_volume_conditions:\n", "    content_follow:\n", condition_sections)
+
+content_section = '''    content_follow:
+      name: Connected devices and EQ/content follow
+      icon: mdi:movie-open-play
+      collapsed: true
+      input:
+        connected_media_players:
+          name: Connected media players
+          description: >-
+            Select TVs, streamers, consoles or other media_player entities. They
+            drive connected-activity gating and content/EQ classification. Area
+            assignment pairs them to soundbars; no-area entities are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        connected_devices:
+          name: Connected devices (optional)
+          description: >-
+            Rich device selector. Media-player entities belonging to these devices
+            are included automatically for activity/content evaluation.
+          default: []
+          selector:
+            device:
+              multiple: true
+        connected_labels:
+          name: Connected device/entity labels (optional)
+          description: >-
+            Rich label selector. Media-player entities directly carrying these
+            labels, or belonging to labeled devices, are included automatically.
+            This can reproduce policies such as selecting every device labeled TV.
+          default: []
+          selector:
+            label:
+              multiple: true
+        content_classifier_entities:
+          name: Optional content / AI classifier entities
+          description: >-
+            Optional entities whose state or common label attributes contain a
+            content class such as Movie, Music, Voice, Sport or Game. Area
+            assignment is respected; entities without an area are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        ai_content_actions:
+          name: Optional snapshot / AI classification actions
+          description: >-
+            Optional actions run when a directly selected connected media player
+            changes. Use this hook to take a snapshot, call any AI/vision service,
+            and update a selected classifier entity.
+          default: []
+          selector:
+            action: {}
+        eq_follow_ha_conditions:
+          name: Additional EQ-follow condition
+          description: >-
+            Optional rich condition that must pass before automatic EQ selection.
+            Empty means no additional condition.
+          default: []
+          selector:
+            condition: {}
+        eq_follow_template:
+          name: EQ-follow template
+          description: >-
+            Template AND-gate for EQ follow. `bar`, `bar_area`, `content_text` and
+            `eq_candidate` are available.
+          default: "{{ true }}"
+          selector:
+            template: {}
+        eq_fallback_mode:
+          name: EQ fallback when content is unknown
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Game
+        normal_sound_mode:
+          name: Mode to restore after Night when EQ follow is off
+          description: >-
+            Used when Night ends and EQ follow does not select a mode. `No change`
+            leaves the current mode untouched.
+          default: Movie
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Game
+        game_keywords:
+          name: Game keywords
+          default: "game,gaming,playstation,xbox,nintendo,steam,geforce now"
+          selector:
+            text: {}
+        sport_keywords:
+          name: Sport keywords
+          default: "sport,sports,football,soccer,basketball,tennis,formula 1,f1,nfl,nba,uefa"
+          selector:
+            text: {}
+        voice_keywords:
+          name: Voice keywords
+          default: "voice,speech,talk,podcast,audiobook,news"
+          selector:
+            text: {}
+        music_keywords:
+          name: Music keywords
+          default: "music,audio,song,album,spotify,tidal,deezer,music assistant,youtube music"
+          selector:
+            text: {}
+        movie_keywords:
+          name: Movie / TV keywords
+          default: "movie,film,video,tv,episode,series,netflix,prime video,disney,plex,jellyfin,kodi"
+          selector:
+            text: {}
+
+'''
+bp = replace_between(bp, "    content_follow:\n", "    options:\n", content_section)
+
+options_section = '''    options:
+      name: Features and manual-control behavior
+      icon: mdi:tune-variant
+      collapsed: false
+      input:
+        apply_volume_follow:
+          name: Volume follow
+          description: Apply min/max, priority conditions, modifiers and quiet-hour fades.
+          default: true
+          selector:
+            boolean: {}
+        learn_manual_volume_changes:
+          name: Learn min/max from manual volume changes
+          description: >-
+            When enabled, manual soundbar volume changes update the active minimum
+            or maximum only when that endpoint uses a writable input_number/number
+            entity. Manual changes during a quiet-hours fade stop the fade and are
+            never learned.
+          default: false
+          selector:
+            boolean: {}
+        manual_learning_ha_conditions:
+          name: Additional manual-learning condition
+          description: >-
+            Optional rich Home Assistant condition that must pass before a manual
+            change can update Min/Max. Empty means no extra restriction.
+          default: []
+          selector:
+            condition: {}
+        manual_learning_template:
+          name: Manual-learning template
+          description: >-
+            Template AND-gate for learning. Return true to permit learning for the
+            current `bar`. `bar_area`, `manual_volume` and `trigger_id` are available.
+          default: "{{ true }}"
+          selector:
+            template: {}
+        apply_night_mode:
+          name: Night mode
+          description: Select ULTIMEA Night during quiet hours or Night conditions.
+          default: true
+          selector:
+            boolean: {}
+        apply_eq_follow:
+          name: EQ follow
+          description: Select Movie/Music/Voice/Sport/Game from connected content metadata/classification.
+          default: false
+          selector:
+            boolean: {}
+
+'''
+bp = replace_between(bp, "    options:\n", "variables:\n", options_section)
+
+variables_section = f'''variables:
+  ultimea_players: !input ultimea_players
+  min_volume_value: !input min_volume_value
+  min_volume_source_input: !input min_volume_helper
+  max_volume_value: !input max_volume_value
+  max_volume_source_input: !input max_volume_helper
+  quiet_start_time: !input quiet_start
+  quiet_end_time: !input quiet_end
+  transition_before_value: !input transition_before
+  transition_after_value: !input transition_after
+
+  low_volume_binary_entities: !input low_volume_binary_entities
+  list_state_entities: !input list_state_entities
+  global_list_state_entities: !input global_list_state_entities
+  tts_media_players: !input tts_media_players
+  voice_assistants: !input voice_assistants
+  minimum_ha_conditions: !input minimum_ha_conditions
+  minimum_condition_template: !input minimum_condition_template
+
+  zero_binary_entities: !input zero_binary_entities
+  zero_room_list_entities: !input zero_room_list_entities
+  zero_global_list_entities: !input zero_global_list_entities
+  zero_ha_conditions: !input zero_ha_conditions
+  zero_condition_template: !input zero_condition_template
+  zero_effect: !input zero_effect
+  unmute_when_zero_clears: !input unmute_when_zero_clears
+
+  boost_binary_entities: !input boost_binary_entities
+  boost_room_list_entities: !input boost_room_list_entities
+  boost_global_list_entities: !input boost_global_list_entities
+  boost_amount_value: !input boost_amount_value
+  boost_amount_source_input: !input boost_amount_entity
+  boost_ha_conditions: !input boost_ha_conditions
+  boost_condition_template: !input boost_condition_template
+  boost_apply_when: !input boost_apply_when
+  boost_cap: !input boost_cap
+
+  night_mode_entities: !input night_mode_entities
+  night_room_list_entities: !input night_room_list_entities
+  night_global_list_entities: !input night_global_list_entities
+  night_ha_conditions: !input night_ha_conditions
+  night_condition_template: !input night_condition_template
+  night_conditions_request_minimum: !input night_conditions_request_minimum
+
+  connected_activity_mode: !input connected_activity_mode
+  connected_activity_ha_conditions: !input connected_activity_ha_conditions
+  connected_activity_template: !input connected_activity_template
+  inactive_policy_behavior: !input inactive_policy_behavior
+  extra_policy_trigger_entities: !input extra_policy_trigger_entities
+
+  connected_media_players: !input connected_media_players
+  connected_devices: !input connected_devices
+  connected_labels: !input connected_labels
+  content_classifier_entities: !input content_classifier_entities
+  eq_follow_ha_conditions: !input eq_follow_ha_conditions
+  eq_follow_template: !input eq_follow_template
+  eq_fallback_mode: !input eq_fallback_mode
+  normal_sound_mode: !input normal_sound_mode
+  game_keywords: !input game_keywords
+  sport_keywords: !input sport_keywords
+  voice_keywords: !input voice_keywords
+  music_keywords: !input music_keywords
+  movie_keywords: !input movie_keywords
+
+  apply_volume_follow: !input apply_volume_follow
+  learn_manual_volume_changes: !input learn_manual_volume_changes
+  manual_learning_ha_conditions: !input manual_learning_ha_conditions
+  manual_learning_template: !input manual_learning_template
+  apply_night_mode: !input apply_night_mode
+  apply_eq_follow: !input apply_eq_follow
+
+  minimum_room_area_ids: >-
+{room_list_template('list_state_entities')}
+  minimum_global_area_ids: >-
+{room_list_template('global_list_state_entities')}
+  zero_room_area_ids: >-
+{room_list_template('zero_room_list_entities')}
+  zero_global_area_ids: >-
+{room_list_template('zero_global_list_entities')}
+  boost_room_area_ids: >-
+{room_list_template('boost_room_list_entities')}
+  boost_global_area_ids: >-
+{room_list_template('boost_global_list_entities')}
+  night_room_area_ids: >-
+{room_list_template('night_room_list_entities')}
+  night_global_area_ids: >-
+{room_list_template('night_global_list_entities')}
+
+  connected_player_entities: >-
+    {{% set ns = namespace(items=[]) %}}
+    {{% for entity in connected_media_players %}}
+      {{% if entity.startswith('media_player.') and entity not in ns.items %}}
+        {{% set ns.items = ns.items + [entity] %}}
+      {{% endif %}}
+    {{% endfor %}}
+    {{% for device in connected_devices %}}
+      {{% for entity in device_entities(device) %}}
+        {{% if entity.startswith('media_player.') and entity not in ns.items %}}
+          {{% set ns.items = ns.items + [entity] %}}
+        {{% endif %}}
+      {{% endfor %}}
+    {{% endfor %}}
+    {{% for label in connected_labels %}}
+      {{% for entity in label_entities(label) %}}
+        {{% if entity.startswith('media_player.') and entity not in ns.items %}}
+          {{% set ns.items = ns.items + [entity] %}}
+        {{% endif %}}
+      {{% endfor %}}
+      {{% for device in label_devices(label) %}}
+        {{% for entity in device_entities(device) %}}
+          {{% if entity.startswith('media_player.') and entity not in ns.items %}}
+            {{% set ns.items = ns.items + [entity] %}}
+          {{% endif %}}
+        {{% endfor %}}
+      {{% endfor %}}
+    {{% endfor %}}
+    {{{{ ns.items }}}}
+
+triggers:
+'''
+bp = replace_between(bp, "variables:\n", "triggers:\n", variables_section)
+
+triggers_section = '''triggers:
+  - trigger: homeassistant
+    event: start
+    id: startup
+  - trigger: time
+    at: !input quiet_start
+    id: quiet_start
+  - trigger: time
+    at: !input quiet_end
+    id: quiet_end
+  - trigger: time_pattern
+    seconds: "/5"
+    id: transition_tick
+    enabled: !input apply_volume_follow
+  - trigger: time_pattern
+    minutes: "/1"
+    seconds: "0"
+    id: policy_tick
+    enabled: !input apply_volume_follow
+  - trigger: state
+    entity_id: !input ultimea_players
+    id: bar_change
+  - trigger: state
+    entity_id: !input min_volume_helper
+    id: volume_source
+  - trigger: state
+    entity_id: !input max_volume_helper
+    id: volume_source
+  - trigger: state
+    entity_id: !input boost_amount_entity
+    id: boost_amount_change
+  - trigger: state
+    entity_id: !input low_volume_binary_entities
+    id: minimum_change
+  - trigger: state
+    entity_id: !input list_state_entities
+    id: minimum_change
+  - trigger: state
+    entity_id: !input global_list_state_entities
+    id: minimum_change
+  - trigger: state
+    entity_id: !input tts_media_players
+    id: minimum_change
+  - trigger: state
+    entity_id: !input voice_assistants
+    id: minimum_change
+  - trigger: state
+    entity_id: !input zero_binary_entities
+    id: zero_change
+  - trigger: state
+    entity_id: !input zero_room_list_entities
+    id: zero_change
+  - trigger: state
+    entity_id: !input zero_global_list_entities
+    id: zero_change
+  - trigger: state
+    entity_id: !input boost_binary_entities
+    id: boost_change
+  - trigger: state
+    entity_id: !input boost_room_list_entities
+    id: boost_change
+  - trigger: state
+    entity_id: !input boost_global_list_entities
+    id: boost_change
+  - trigger: state
+    entity_id: !input night_mode_entities
+    id: night_change
+  - trigger: state
+    entity_id: !input night_room_list_entities
+    id: night_change
+  - trigger: state
+    entity_id: !input night_global_list_entities
+    id: night_change
+  - trigger: state
+    entity_id: !input connected_media_players
+    id: connected_change
+  - trigger: state
+    entity_id: !input content_classifier_entities
+    id: classifier_change
+  - trigger: state
+    entity_id: !input extra_policy_trigger_entities
+    id: extra_policy_change
+
+conditions: []
+'''
+bp = replace_between(bp, "triggers:\n", "conditions: []\n", triggers_section)
+
+# Entire action engine is replaced below. Condition-selector inputs are evaluated
+# using native Home Assistant conditions, while each group also has a template
+# alternative. Priority is zero/mute -> Min -> scheduled/Max; boost modifies only
+# steady Min/Max, never the time fade itself.
+actions_section = '''actions:
+  - variables:
+      trigger_id: "{{ trigger.id | default('') }}"
+      trigger_entity: >-
+        {{ trigger.entity_id if trigger is defined and trigger.platform == 'state' else '' }}
+      now_seconds: "{{ now().hour * 3600 + now().minute * 60 + now().second }}"
+      quiet_start_seconds: >-
+        {% set p = quiet_start_time.split(':') | map('int') | list %}
+        {{ p[0] * 3600 + p[1] * 60 + (p[2] if p | length > 2 else 0) }}
+      quiet_end_seconds: >-
+        {% set p = quiet_end_time.split(':') | map('int') | list %}
+        {{ p[0] * 3600 + p[1] * 60 + (p[2] if p | length > 2 else 0) }}
+      transition_before_seconds: >-
+        {{ (transition_before_value.get('hours', 0) | int) * 3600
+           + (transition_before_value.get('minutes', 0) | int) * 60
+           + (transition_before_value.get('seconds', 0) | int) }}
+      transition_after_seconds: >-
+        {{ (transition_after_value.get('hours', 0) | int) * 3600
+           + (transition_after_value.get('minutes', 0) | int) * 60
+           + (transition_after_value.get('seconds', 0) | int) }}
+      min_volume_entity: >-
+        {% if min_volume_source_input is string %}{{ min_volume_source_input }}
+        {% elif min_volume_source_input | length > 0 %}{{ min_volume_source_input[0] }}
+        {% else %}{{ '' }}{% endif %}
+      max_volume_entity: >-
+        {% if max_volume_source_input is string %}{{ max_volume_source_input }}
+        {% elif max_volume_source_input | length > 0 %}{{ max_volume_source_input[0] }}
+        {% else %}{{ '' }}{% endif %}
+      boost_amount_entity_id: >-
+        {% if boost_amount_source_input is string %}{{ boost_amount_source_input }}
+        {% elif boost_amount_source_input | length > 0 %}{{ boost_amount_source_input[0] }}
+        {% else %}{{ '' }}{% endif %}
+      min_volume_candidate: >-
+        {% if min_volume_entity %}
+          {% set raw = states(min_volume_entity) | float(min_volume_value | float(20)) %}
+          {% set scale = state_attr(min_volume_entity, 'max') | float(0) %}
+          {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+        {% else %}
+          {% set normalized = (min_volume_value | float(20)) / 100 %}
+        {% endif %}
+        {{ [[normalized, 0.0] | max, 1.0] | min }}
+      max_volume_candidate: >-
+        {% if max_volume_entity %}
+          {% set raw = states(max_volume_entity) | float(max_volume_value | float(50)) %}
+          {% set scale = state_attr(max_volume_entity, 'max') | float(0) %}
+          {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+        {% else %}
+          {% set normalized = (max_volume_value | float(50)) / 100 %}
+        {% endif %}
+        {{ [[normalized, 0.0] | max, 1.0] | min }}
+      boost_delta: >-
+        {% if boost_amount_entity_id %}
+          {% set raw = states(boost_amount_entity_id) | float(boost_amount_value | float(5)) %}
+          {% set scale = state_attr(boost_amount_entity_id, 'max') | float(0) %}
+          {% set pct = raw * 100 if scale <= 1.5 and raw <= 1.5 else raw %}
+        {% else %}
+          {% set pct = boost_amount_value | float(5) %}
+        {% endif %}
+        {{ [[pct / 100, 0.0] | max, 0.5] | min }}
+
+  - variables:
+      quiet_hours_enabled: "{{ quiet_start_seconds != quiet_end_seconds }}"
+      in_quiet_hours: >-
+        {% if quiet_start_seconds == quiet_end_seconds %}false
+        {% elif quiet_start_seconds < quiet_end_seconds %}
+          {{ quiet_start_seconds <= now_seconds < quiet_end_seconds }}
+        {% else %}
+          {{ now_seconds >= quiet_start_seconds or now_seconds < quiet_end_seconds }}
+        {% endif %}
+      seconds_until_quiet_start: "{{ (quiet_start_seconds - now_seconds + 86400) % 86400 }}"
+      seconds_since_quiet_end: "{{ (now_seconds - quiet_end_seconds + 86400) % 86400 }}"
+      min_volume: "{{ [min_volume_candidate, max_volume_candidate] | min }}"
+      max_volume: "{{ [min_volume_candidate, max_volume_candidate] | max }}"
+
+  - variables:
+      before_transition_active: >-
+        {{ quiet_hours_enabled and not in_quiet_hours and transition_before_seconds > 0
+           and 0 < seconds_until_quiet_start <= transition_before_seconds }}
+      after_transition_active: >-
+        {{ quiet_hours_enabled and not in_quiet_hours and transition_after_seconds > 0
+           and seconds_since_quiet_end < transition_after_seconds }}
+      scheduled_volume: >-
+        {% if in_quiet_hours %}{{ min_volume }}
+        {% elif quiet_hours_enabled and transition_before_seconds > 0
+                and 0 < seconds_until_quiet_start <= transition_before_seconds %}
+          {% set progress = 1 - (seconds_until_quiet_start / transition_before_seconds) %}
+          {{ max_volume - ((max_volume - min_volume) * progress) }}
+        {% elif quiet_hours_enabled and transition_after_seconds > 0
+                and seconds_since_quiet_end < transition_after_seconds %}
+          {% set progress = seconds_since_quiet_end / transition_after_seconds %}
+          {{ min_volume + ((max_volume - min_volume) * progress) }}
+        {% else %}{{ max_volume }}{% endif %}
+      previous_scheduled_volume: >-
+        {% if before_transition_active and transition_before_seconds > 0 %}
+          {% set step = ((max_volume - min_volume) * 5 / transition_before_seconds) %}
+          {{ [max_volume, scheduled_volume + step] | min }}
+        {% elif after_transition_active and transition_after_seconds > 0 %}
+          {% set step = ((max_volume - min_volume) * 5 / transition_after_seconds) %}
+          {{ [min_volume, scheduled_volume - step] | max }}
+        {% else %}{{ scheduled_volume }}{% endif %}
+      bar_volume_changed: >-
+        {{ trigger_id == 'bar_change' and trigger.from_state is not none
+           and trigger.to_state is not none
+           and trigger.from_state.attributes.get('volume_level') != trigger.to_state.attributes.get('volume_level')
+           and trigger.to_state.attributes.get('volume_level') is not none }}
+      bar_became_on: >-
+        {{ trigger_id == 'bar_change' and trigger.from_state is not none
+           and trigger.to_state is not none and trigger.from_state.state != 'on'
+           and trigger.to_state.state == 'on' }}
+
+  # Manual volume changes are either recognized as automation echoes, learned into
+  # the active endpoint, or treated as a fade interruption. Rich custom conditions
+  # are included in the same regime decision.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ apply_volume_follow and bar_volume_changed }}"
+        sequence:
+          - variables:
+              bar: "{{ trigger_entity }}"
+              bar_area: "{{ area_id(trigger_entity) or '' }}"
+              manual_volume: "{{ trigger.to_state.attributes.get('volume_level') | float(0) }}"
+              current_volume: "{{ trigger.to_state.attributes.get('volume_level') | float(-1) }}"
+              minimum_binary_active: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in low_volume_binary_entities %}
+                  {% set a = area_id(entity) or '' %}
+                  {% if is_state(entity, 'on') and (a == '' or (bar_area != '' and a == bar_area)) %}
+                    {% set ns.active = true %}{% endif %}
+                {% endfor %}{{ ns.active }}
+              tts_active: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in tts_media_players %}
+                  {% set a = area_id(entity) or '' %}
+                  {% if states(entity) in ['playing', 'buffering'] and (a == '' or (bar_area != '' and a == bar_area)) %}
+                    {% set ns.active = true %}{% endif %}
+                {% endfor %}{{ ns.active }}
+              voice_active: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in voice_assistants %}
+                  {% set a = area_id(entity) or '' %}
+                  {% if states(entity) not in ['idle', 'unknown', 'unavailable'] and (a == '' or (bar_area != '' and a == bar_area)) %}
+                    {% set ns.active = true %}{% endif %}
+                {% endfor %}{{ ns.active }}
+              minimum_list_active: >-
+                {{ '*' in minimum_room_area_ids or (bar_area != '' and bar_area in minimum_room_area_ids)
+                   or minimum_global_area_ids | count > 0 }}
+              zero_binary_active: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in zero_binary_entities %}
+                  {% set a = area_id(entity) or '' %}
+                  {% if is_state(entity, 'on') and (a == '' or (bar_area != '' and a == bar_area)) %}
+                    {% set ns.active = true %}{% endif %}
+                {% endfor %}{{ ns.active }}
+              zero_list_active: >-
+                {{ '*' in zero_room_area_ids or (bar_area != '' and bar_area in zero_room_area_ids)
+                   or zero_global_area_ids | count > 0 }}
+              boost_binary_active: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in boost_binary_entities %}
+                  {% set a = area_id(entity) or '' %}
+                  {% if is_state(entity, 'on') and (a == '' or (bar_area != '' and a == bar_area)) %}
+                    {% set ns.active = true %}{% endif %}
+                {% endfor %}{{ ns.active }}
+              boost_list_active: >-
+                {{ '*' in boost_room_area_ids or (bar_area != '' and bar_area in boost_room_area_ids)
+                   or boost_global_area_ids | count > 0 }}
+              night_binary_active: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in night_mode_entities %}
+                  {% set a = area_id(entity) or '' %}
+                  {% if is_state(entity, 'on') and (a == '' or (bar_area != '' and a == bar_area)) %}
+                    {% set ns.active = true %}{% endif %}
+                {% endfor %}{{ ns.active }}
+              night_list_active: >-
+                {{ '*' in night_room_area_ids or (bar_area != '' and bar_area in night_room_area_ids)
+                   or night_global_area_ids | count > 0 }}
+          - choose:
+              # Zero/mute has the highest priority and is never learned.
+              - conditions:
+                  - condition: or
+                    conditions:
+                      - condition: template
+                        value_template: "{{ zero_binary_active or zero_list_active }}"
+                      - condition: and
+                        conditions:
+                          - condition: template
+                            value_template: "{{ zero_ha_conditions | count > 0 }}"
+                          - condition: and
+                            conditions: !input zero_ha_conditions
+                      - condition: template
+                        value_template: !input zero_condition_template
+                sequence:
+                  - stop: Zero/mute priority active; manual volume is not learned.
+
+              # Min regime: scheduled quiet time, direct minimum conditions or Night
+              # conditions configured to request minimum volume.
+              - conditions:
+                  - condition: or
+                    conditions:
+                      - condition: template
+                        value_template: "{{ in_quiet_hours or minimum_binary_active or tts_active or voice_active or minimum_list_active }}"
+                      - condition: and
+                        conditions:
+                          - condition: template
+                            value_template: "{{ minimum_ha_conditions | count > 0 }}"
+                          - condition: and
+                            conditions: !input minimum_ha_conditions
+                      - condition: template
+                        value_template: !input minimum_condition_template
+                      - condition: and
+                        conditions:
+                          - condition: template
+                            value_template: "{{ night_conditions_request_minimum }}"
+                          - condition: or
+                            conditions:
+                              - condition: template
+                                value_template: "{{ night_binary_active or night_list_active }}"
+                              - condition: and
+                                conditions:
+                                  - condition: template
+                                    value_template: "{{ night_ha_conditions | count > 0 }}"
+                                  - condition: and
+                                    conditions: !input night_ha_conditions
+                              - condition: template
+                                value_template: !input night_condition_template
+                sequence:
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ boost_apply_when in ['Minimum-volume conditions', 'Minimum and normal'] }}"
+                          - condition: or
+                            conditions:
+                              - condition: template
+                                value_template: "{{ boost_binary_active or boost_list_active }}"
+                              - condition: and
+                                conditions:
+                                  - condition: template
+                                    value_template: "{{ boost_ha_conditions | count > 0 }}"
+                                  - condition: and
+                                    conditions: !input boost_ha_conditions
+                              - condition: template
+                                value_template: !input boost_condition_template
+                        sequence:
+                          - variables:
+                              manual_expected_volume: >-
+                                {% set cap = max_volume if boost_cap == 'Maximum endpoint' else 1.0 %}
+                                {{ [min_volume + boost_delta, cap] | min }}
+                              manual_learning_base: "{{ [manual_volume - boost_delta, 0.0] | max }}"
+                          - choose:
+                              - conditions:
+                                  - condition: template
+                                    value_template: "{{ (manual_volume - manual_expected_volume) | abs > 0.004 and learn_manual_volume_changes }}"
+                                  - condition: or
+                                    conditions:
+                                      - condition: template
+                                        value_template: "{{ manual_learning_ha_conditions | count == 0 }}"
+                                      - condition: and
+                                        conditions: !input manual_learning_ha_conditions
+                                  - condition: template
+                                    value_template: !input manual_learning_template
+                                sequence:
+                                  - variables:
+                                      manual_learning_entity: "{{ min_volume_entity }}"
+                                      manual_learning_domain: "{{ min_volume_entity.split('.', 1)[0] if min_volume_entity else '' }}"
+                                      manual_learning_value: >-
+                                        {% set scale = state_attr(min_volume_entity, 'max') | float(0) if min_volume_entity else 0 %}
+                                        {% set current = states(min_volume_entity) | float(0) if min_volume_entity else 0 %}
+                                        {{ (manual_learning_base * 100 if scale > 1.5 or current > 1.5 else manual_learning_base) | round(2) }}
+                                  - choose:
+                                      - conditions: "{{ manual_learning_domain == 'input_number' }}"
+                                        sequence:
+                                          - action: input_number.set_value
+                                            continue_on_error: true
+                                            target: {entity_id: "{{ manual_learning_entity }}"}
+                                            data: {value: "{{ manual_learning_value }}"}
+                                      - conditions: "{{ manual_learning_domain == 'number' }}"
+                                        sequence:
+                                          - action: number.set_value
+                                            continue_on_error: true
+                                            target: {entity_id: "{{ manual_learning_entity }}"}
+                                            data: {value: "{{ manual_learning_value }}"}
+                          - stop: Manual Min change handled.
+                    default:
+                      - variables:
+                          manual_expected_volume: "{{ min_volume }}"
+                          manual_learning_base: "{{ manual_volume }}"
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ (manual_volume - manual_expected_volume) | abs > 0.004 and learn_manual_volume_changes }}"
+                              - condition: or
+                                conditions:
+                                  - condition: template
+                                    value_template: "{{ manual_learning_ha_conditions | count == 0 }}"
+                                  - condition: and
+                                    conditions: !input manual_learning_ha_conditions
+                              - condition: template
+                                value_template: !input manual_learning_template
+                            sequence:
+                              - variables:
+                                  manual_learning_entity: "{{ min_volume_entity }}"
+                                  manual_learning_domain: "{{ min_volume_entity.split('.', 1)[0] if min_volume_entity else '' }}"
+                                  manual_learning_value: >-
+                                    {% set scale = state_attr(min_volume_entity, 'max') | float(0) if min_volume_entity else 0 %}
+                                    {% set current = states(min_volume_entity) | float(0) if min_volume_entity else 0 %}
+                                    {{ (manual_learning_base * 100 if scale > 1.5 or current > 1.5 else manual_learning_base) | round(2) }}
+                              - choose:
+                                  - conditions: "{{ manual_learning_domain == 'input_number' }}"
+                                    sequence:
+                                      - action: input_number.set_value
+                                        continue_on_error: true
+                                        target: {entity_id: "{{ manual_learning_entity }}"}
+                                        data: {value: "{{ manual_learning_value }}"}
+                                  - conditions: "{{ manual_learning_domain == 'number' }}"
+                                    sequence:
+                                      - action: number.set_value
+                                        continue_on_error: true
+                                        target: {entity_id: "{{ manual_learning_entity }}"}
+                                        data: {value: "{{ manual_learning_value }}"}
+                      - stop: Manual Min change handled.
+
+              # During the time fade, any value that is not the automation's current
+              # target is a manual interruption. Never learn it.
+              - conditions:
+                  - condition: template
+                    value_template: "{{ before_transition_active or after_transition_active }}"
+                sequence:
+                  - stop: Quiet-hours fade volume change handled; manual deviations pause the fade.
+
+            default:
+              # Normal regime; support the same optional ambient boost and learn the
+              # base Max so a +5% boost does not compound after learning.
+              - choose:
+                  - conditions:
+                      - condition: template
+                        value_template: "{{ boost_apply_when in ['Normal operation', 'Minimum and normal'] }}"
+                      - condition: or
+                        conditions:
+                          - condition: template
+                            value_template: "{{ boost_binary_active or boost_list_active }}"
+                          - condition: and
+                            conditions:
+                              - condition: template
+                                value_template: "{{ boost_ha_conditions | count > 0 }}"
+                              - condition: and
+                                conditions: !input boost_ha_conditions
+                          - condition: template
+                            value_template: !input boost_condition_template
+                    sequence:
+                      - variables:
+                          manual_expected_volume: "{{ [max_volume + boost_delta, 1.0] | min }}"
+                          manual_learning_base: "{{ [manual_volume - boost_delta, 0.0] | max }}"
+                      - choose:
+                          - conditions:
+                              - condition: template
+                                value_template: "{{ (manual_volume - manual_expected_volume) | abs > 0.004 and learn_manual_volume_changes }}"
+                              - condition: or
+                                conditions:
+                                  - condition: template
+                                    value_template: "{{ manual_learning_ha_conditions | count == 0 }}"
+                                  - condition: and
+                                    conditions: !input manual_learning_ha_conditions
+                              - condition: template
+                                value_template: !input manual_learning_template
+                            sequence:
+                              - variables:
+                                  manual_learning_entity: "{{ max_volume_entity }}"
+                                  manual_learning_domain: "{{ max_volume_entity.split('.', 1)[0] if max_volume_entity else '' }}"
+                                  manual_learning_value: >-
+                                    {% set scale = state_attr(max_volume_entity, 'max') | float(0) if max_volume_entity else 0 %}
+                                    {% set current = states(max_volume_entity) | float(0) if max_volume_entity else 0 %}
+                                    {{ (manual_learning_base * 100 if scale > 1.5 or current > 1.5 else manual_learning_base) | round(2) }}
+                              - choose:
+                                  - conditions: "{{ manual_learning_domain == 'input_number' }}"
+                                    sequence:
+                                      - action: input_number.set_value
+                                        continue_on_error: true
+                                        target: {entity_id: "{{ manual_learning_entity }}"}
+                                        data: {value: "{{ manual_learning_value }}"}
+                                  - conditions: "{{ manual_learning_domain == 'number' }}"
+                                    sequence:
+                                      - action: number.set_value
+                                        continue_on_error: true
+                                        target: {entity_id: "{{ manual_learning_entity }}"}
+                                        data: {value: "{{ manual_learning_value }}"}
+                      - stop: Manual Max change handled.
+                default:
+                  - variables:
+                      manual_expected_volume: "{{ max_volume }}"
+                      manual_learning_base: "{{ manual_volume }}"
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: "{{ (manual_volume - manual_expected_volume) | abs > 0.004 and learn_manual_volume_changes }}"
+                          - condition: or
+                            conditions:
+                              - condition: template
+                                value_template: "{{ manual_learning_ha_conditions | count == 0 }}"
+                              - condition: and
+                                conditions: !input manual_learning_ha_conditions
+                          - condition: template
+                            value_template: !input manual_learning_template
+                        sequence:
+                          - variables:
+                              manual_learning_entity: "{{ max_volume_entity }}"
+                              manual_learning_domain: "{{ max_volume_entity.split('.', 1)[0] if max_volume_entity else '' }}"
+                              manual_learning_value: >-
+                                {% set scale = state_attr(max_volume_entity, 'max') | float(0) if max_volume_entity else 0 %}
+                                {% set current = states(max_volume_entity) | float(0) if max_volume_entity else 0 %}
+                                {{ (manual_learning_base * 100 if scale > 1.5 or current > 1.5 else manual_learning_base) | round(2) }}
+                          - choose:
+                              - conditions: "{{ manual_learning_domain == 'input_number' }}"
+                                sequence:
+                                  - action: input_number.set_value
+                                    continue_on_error: true
+                                    target: {entity_id: "{{ manual_learning_entity }}"}
+                                    data: {value: "{{ manual_learning_value }}"}
+                              - conditions: "{{ manual_learning_domain == 'number' }}"
+                                sequence:
+                                  - action: number.set_value
+                                    continue_on_error: true
+                                    target: {entity_id: "{{ manual_learning_entity }}"}
+                                    data: {value: "{{ manual_learning_value }}"}
+                  - stop: Manual Max change handled.
+
+  # Ignore unrelated ULTIMEA state/attribute changes; a bar becoming ON is the
+  # deliberate exception so current policy can be applied once.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger_id == 'bar_change' and not bar_became_on }}"
+        sequence:
+          - stop: ULTIMEA state change left untouched.
+
+  # Volume policy engine. Rich condition groups are evaluated per bar. Direct
+  # zero/Min conditions are immediate. Only scheduled quiet-hour boundaries fade.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ apply_volume_follow and (
+                   (trigger_id == 'transition_tick' and (before_transition_active or after_transition_active))
+                   or (trigger_id == 'policy_tick' and not before_transition_active and not after_transition_active)
+                   or trigger_id not in ['transition_tick', 'policy_tick']) }}
+        sequence:
+          - repeat:
+              for_each: "{{ ultimea_players }}"
+              sequence:
+                - variables:
+                    bar: "{{ repeat.item }}"
+                    bar_area: "{{ area_id(repeat.item) or '' }}"
+                    current_volume: "{{ state_attr(bar, 'volume_level') | float(-1) }}"
+                    current_muted: "{{ state_attr(bar, 'is_volume_muted') | default(false, true) }}"
+                    connected_players_for_bar: >-
+                      {% set ns = namespace(items=[]) %}
+                      {% for entity in connected_player_entities %}
+                        {% set a = area_id(entity) or '' %}
+                        {% if a == '' or (bar_area != '' and a == bar_area) %}
+                          {% set ns.items = ns.items + [entity] %}{% endif %}
+                      {% endfor %}{{ ns.items | unique | list }}
+                    connected_player_count: "{{ connected_players_for_bar | count }}"
+                    connected_active_count: >-
+                      {{ expand(connected_players_for_bar)
+                         | rejectattr('state', 'in', ['off', 'idle', 'standby', 'unavailable', 'unknown'])
+                         | list | count }}
+                    connected_playing_count: >-
+                      {{ expand(connected_players_for_bar)
+                         | selectattr('state', 'in', ['playing', 'buffering', 'on'])
+                         | list | count }}
+                    connected_builtin_gate: >-
+                      {% if connected_activity_mode == 'Always manage' %}true
+                      {% elif connected_activity_mode == 'Require active connected player' %}
+                        {{ connected_active_count > 0 }}
+                      {% else %}{{ connected_playing_count > 0 }}{% endif %}
+                    minimum_binary_active: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in low_volume_binary_entities %}
+                        {% set a = area_id(entity) or '' %}
+                        {% if is_state(entity, 'on') and (a == '' or (bar_area != '' and a == bar_area)) %}
+                          {% set ns.active = true %}{% endif %}
+                      {% endfor %}{{ ns.active }}
+                    tts_active: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in tts_media_players %}
+                        {% set a = area_id(entity) or '' %}
+                        {% if states(entity) in ['playing', 'buffering'] and (a == '' or (bar_area != '' and a == bar_area)) %}
+                          {% set ns.active = true %}{% endif %}
+                      {% endfor %}{{ ns.active }}
+                    voice_active: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in voice_assistants %}
+                        {% set a = area_id(entity) or '' %}
+                        {% if states(entity) not in ['idle', 'unknown', 'unavailable'] and (a == '' or (bar_area != '' and a == bar_area)) %}
+                          {% set ns.active = true %}{% endif %}
+                      {% endfor %}{{ ns.active }}
+                    minimum_list_active: >-
+                      {{ '*' in minimum_room_area_ids or (bar_area != '' and bar_area in minimum_room_area_ids)
+                         or minimum_global_area_ids | count > 0 }}
+                    zero_binary_active: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in zero_binary_entities %}
+                        {% set a = area_id(entity) or '' %}
+                        {% if is_state(entity, 'on') and (a == '' or (bar_area != '' and a == bar_area)) %}
+                          {% set ns.active = true %}{% endif %}
+                      {% endfor %}{{ ns.active }}
+                    zero_list_active: >-
+                      {{ '*' in zero_room_area_ids or (bar_area != '' and bar_area in zero_room_area_ids)
+                         or zero_global_area_ids | count > 0 }}
+                    boost_binary_active: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in boost_binary_entities %}
+                        {% set a = area_id(entity) or '' %}
+                        {% if is_state(entity, 'on') and (a == '' or (bar_area != '' and a == bar_area)) %}
+                          {% set ns.active = true %}{% endif %}
+                      {% endfor %}{{ ns.active }}
+                    boost_list_active: >-
+                      {{ '*' in boost_room_area_ids or (bar_area != '' and bar_area in boost_room_area_ids)
+                         or boost_global_area_ids | count > 0 }}
+                    night_binary_active: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in night_mode_entities %}
+                        {% set a = area_id(entity) or '' %}
+                        {% if is_state(entity, 'on') and (a == '' or (bar_area != '' and a == bar_area)) %}
+                          {% set ns.active = true %}{% endif %}
+                      {% endfor %}{{ ns.active }}
+                    night_list_active: >-
+                      {{ '*' in night_room_area_ids or (bar_area != '' and bar_area in night_room_area_ids)
+                         or night_global_area_ids | count > 0 }}
+                - choose:
+                    # Connected/activity gate: native condition editor and template are
+                    # both ANDed with the built-in connected-player mode.
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ is_state(bar, 'on') and connected_builtin_gate }}"
+                        - condition: or
+                          conditions:
+                            - condition: template
+                              value_template: "{{ connected_activity_ha_conditions | count == 0 }}"
+                            - condition: and
+                              conditions: !input connected_activity_ha_conditions
+                        - condition: template
+                          value_template: !input connected_activity_template
+                      sequence:
+                        - choose:
+                            # Highest priority: zero/mute.
+                            - conditions:
+                                - condition: or
+                                  conditions:
+                                    - condition: template
+                                      value_template: "{{ zero_binary_active or zero_list_active }}"
+                                    - condition: and
+                                      conditions:
+                                        - condition: template
+                                          value_template: "{{ zero_ha_conditions | count > 0 }}"
+                                        - condition: and
+                                          conditions: !input zero_ha_conditions
+                                    - condition: template
+                                      value_template: !input zero_condition_template
+                              sequence:
+                                - choose:
+                                    - conditions: "{{ zero_effect in ['Volume 0', 'Volume 0 and mute'] and (current_volume < 0 or current_volume > 0.004) }}"
+                                      sequence:
+                                        - action: media_player.volume_set
+                                          continue_on_error: true
+                                          target: {entity_id: "{{ bar }}"}
+                                          data: {volume_level: 0}
+                                - choose:
+                                    - conditions: "{{ zero_effect in ['Mute', 'Volume 0 and mute'] and not current_muted }}"
+                                      sequence:
+                                        - action: media_player.volume_mute
+                                          continue_on_error: true
+                                          target: {entity_id: "{{ bar }}"}
+                                          data: {is_volume_muted: true}
+                                - sequence: !input zero_extra_actions
+
+                            # Minimum regime. Scheduled quiet time, selected sources,
+                            # rich conditions/templates, and optionally Night all enter here.
+                            - conditions:
+                                - condition: or
+                                  conditions:
+                                    - condition: template
+                                      value_template: "{{ in_quiet_hours or minimum_binary_active or tts_active or voice_active or minimum_list_active }}"
+                                    - condition: and
+                                      conditions:
+                                        - condition: template
+                                          value_template: "{{ minimum_ha_conditions | count > 0 }}"
+                                        - condition: and
+                                          conditions: !input minimum_ha_conditions
+                                    - condition: template
+                                      value_template: !input minimum_condition_template
+                                    - condition: and
+                                      conditions:
+                                        - condition: template
+                                          value_template: "{{ night_conditions_request_minimum }}"
+                                        - condition: or
+                                          conditions:
+                                            - condition: template
+                                              value_template: "{{ night_binary_active or night_list_active }}"
+                                            - condition: and
+                                              conditions:
+                                                - condition: template
+                                                  value_template: "{{ night_ha_conditions | count > 0 }}"
+                                                - condition: and
+                                                  conditions: !input night_ha_conditions
+                                            - condition: template
+                                              value_template: !input night_condition_template
+                              sequence:
+                                - choose:
+                                    - conditions: "{{ unmute_when_zero_clears and current_muted }}"
+                                      sequence:
+                                        - action: media_player.volume_mute
+                                          continue_on_error: true
+                                          target: {entity_id: "{{ bar }}"}
+                                          data: {is_volume_muted: false}
+                                - choose:
+                                    - conditions:
+                                        - condition: template
+                                          value_template: "{{ boost_apply_when in ['Minimum-volume conditions', 'Minimum and normal'] }}"
+                                        - condition: or
+                                          conditions:
+                                            - condition: template
+                                              value_template: "{{ boost_binary_active or boost_list_active }}"
+                                            - condition: and
+                                              conditions:
+                                                - condition: template
+                                                  value_template: "{{ boost_ha_conditions | count > 0 }}"
+                                                - condition: and
+                                                  conditions: !input boost_ha_conditions
+                                            - condition: template
+                                              value_template: !input boost_condition_template
+                                      sequence:
+                                        - variables:
+                                            desired_volume: >-
+                                              {% set cap = max_volume if boost_cap == 'Maximum endpoint' else 1.0 %}
+                                              {{ [min_volume + boost_delta, cap] | min }}
+                                        - condition: template
+                                          value_template: "{{ current_volume < 0 or (current_volume - desired_volume) | abs > 0.009 }}"
+                                        - action: media_player.volume_set
+                                          continue_on_error: true
+                                          target: {entity_id: "{{ bar }}"}
+                                          data: {volume_level: "{{ [[desired_volume, 0.0] | max, 1.0] | min | round(2) }}"}
+                                  default:
+                                    - condition: template
+                                      value_template: "{{ current_volume < 0 or (current_volume - min_volume) | abs > 0.009 }}"
+                                    - action: media_player.volume_set
+                                      continue_on_error: true
+                                      target: {entity_id: "{{ bar }}"}
+                                      data: {volume_level: "{{ min_volume | round(2) }}"}
+
+                          default:
+                            # Normal/time-scheduled regime. Boost is deliberately not
+                            # applied during fades so fade interruption remains unambiguous.
+                            - choose:
+                                - conditions: "{{ unmute_when_zero_clears and current_muted }}"
+                                  sequence:
+                                    - action: media_player.volume_mute
+                                      continue_on_error: true
+                                      target: {entity_id: "{{ bar }}"}
+                                      data: {is_volume_muted: false}
+                            - choose:
+                                - conditions:
+                                    - condition: template
+                                      value_template: "{{ before_transition_active or after_transition_active }}"
+                                  sequence:
+                                    - variables:
+                                        previous_transition_target: "{{ previous_scheduled_volume | float(scheduled_volume) | round(2) }}"
+                                        fade_interrupted_by_manual_volume: >-
+                                          {{ current_volume >= 0 and (current_volume - previous_transition_target) | abs > 0.004 }}
+                                    - choose:
+                                        - conditions: >-
+                                            {{ not fade_interrupted_by_manual_volume
+                                               and (current_volume < 0 or (current_volume - scheduled_volume) | abs > 0.009) }}
+                                          sequence:
+                                            - action: media_player.volume_set
+                                              continue_on_error: true
+                                              target: {entity_id: "{{ bar }}"}
+                                              data: {volume_level: "{{ scheduled_volume | round(2) }}"}
+                              default:
+                                - choose:
+                                    - conditions:
+                                        - condition: template
+                                          value_template: "{{ boost_apply_when in ['Normal operation', 'Minimum and normal'] }}"
+                                        - condition: or
+                                          conditions:
+                                            - condition: template
+                                              value_template: "{{ boost_binary_active or boost_list_active }}"
+                                            - condition: and
+                                              conditions:
+                                                - condition: template
+                                                  value_template: "{{ boost_ha_conditions | count > 0 }}"
+                                                - condition: and
+                                                  conditions: !input boost_ha_conditions
+                                            - condition: template
+                                              value_template: !input boost_condition_template
+                                      sequence:
+                                        - variables:
+                                            desired_volume: "{{ [max_volume + boost_delta, 1.0] | min }}"
+                                        - condition: template
+                                          value_template: "{{ current_volume < 0 or (current_volume - desired_volume) | abs > 0.009 }}"
+                                        - action: media_player.volume_set
+                                          continue_on_error: true
+                                          target: {entity_id: "{{ bar }}"}
+                                          data: {volume_level: "{{ desired_volume | round(2) }}"}
+                                  default:
+                                    - condition: template
+                                      value_template: "{{ current_volume < 0 or (current_volume - max_volume) | abs > 0.009 }}"
+                                    - action: media_player.volume_set
+                                      continue_on_error: true
+                                      target: {entity_id: "{{ bar }}"}
+                                      data: {volume_level: "{{ max_volume | round(2) }}"}
+                  default:
+                    - choose:
+                        - conditions: "{{ is_state(bar, 'on') and inactive_policy_behavior == 'Set volume 0' and (current_volume < 0 or current_volume > 0.004) }}"
+                          sequence:
+                            - action: media_player.volume_set
+                              continue_on_error: true
+                              target: {entity_id: "{{ bar }}"}
+                              data: {volume_level: 0}
+
+  # Provider-neutral AI hook for directly selected connected media players.
+  - choose:
+      - conditions: "{{ apply_eq_follow and trigger_id == 'connected_change' }}"
+        sequence: !input ai_content_actions
+
+  # Night/EQ remains event-driven so manual sound-mode changes are not fought by
+  # the one-minute recovery tick. Add referenced template entities to the extra
+  # trigger selector when immediate reevaluation is needed.
+  - choose:
+      - conditions: >-
+          {{ trigger_id in ['startup', 'quiet_start', 'quiet_end', 'night_change',
+                            'connected_change', 'classifier_change', 'extra_policy_change']
+             or bar_became_on }}
+        sequence:
+          - repeat:
+              for_each: "{{ ultimea_players }}"
+              sequence:
+                - variables:
+                    bar: "{{ repeat.item }}"
+                    bar_area: "{{ area_id(repeat.item) or '' }}"
+                    mode_trigger_affects_bar: >-
+                      {% if trigger_id in ['startup', 'quiet_start', 'quiet_end', 'extra_policy_change'] %}true
+                      {% elif trigger_id == 'bar_change' %}{{ trigger_entity == bar and bar_became_on }}
+                      {% else %}
+                        {% set a = area_id(trigger_entity) or '' %}
+                        {{ a == '' or (bar_area != '' and a == bar_area) }}
+                      {% endif %}
+                    night_binary_active: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in night_mode_entities %}
+                        {% set a = area_id(entity) or '' %}
+                        {% if is_state(entity, 'on') and (a == '' or (bar_area != '' and a == bar_area)) %}
+                          {% set ns.active = true %}{% endif %}
+                      {% endfor %}{{ ns.active }}
+                    night_list_active: >-
+                      {{ '*' in night_room_area_ids or (bar_area != '' and bar_area in night_room_area_ids)
+                         or night_global_area_ids | count > 0 }}
+                    current_sound_mode: "{{ state_attr(bar, 'sound_mode') or '' }}"
+                    supported_sound_modes: "{{ state_attr(bar, 'sound_mode_list') | default([], true) }}"
+                    connected_players_for_bar: >-
+                      {% set ns = namespace(items=[]) %}
+                      {% for entity in connected_player_entities %}
+                        {% set a = area_id(entity) or '' %}
+                        {% if a == '' or (bar_area != '' and a == bar_area) %}
+                          {% set ns.items = ns.items + [entity] %}{% endif %}
+                      {% endfor %}{{ ns.items | unique | list }}
+                    content_text: >-
+                      {% set ns = namespace(text='') %}
+                      {% for entity in connected_players_for_bar %}
+                        {% set ns.text = ns.text ~ ' ' ~ states(entity) %}
+                        {% for attr in ['app_name', 'media_title', 'media_series_title',
+                                        'media_album_name', 'media_artist', 'media_content_type',
+                                        'media_channel', 'media_playlist', 'source'] %}
+                          {% set value = state_attr(entity, attr) %}
+                          {% if value is not none %}{% set ns.text = ns.text ~ ' ' ~ (value | string) %}{% endif %}
+                        {% endfor %}
+                      {% endfor %}
+                      {% for entity in content_classifier_entities %}
+                        {% set a = area_id(entity) or '' %}
+                        {% if a == '' or (bar_area != '' and a == bar_area) %}
+                          {% set ns.text = ns.text ~ ' ' ~ states(entity) %}
+                          {% for attr in ['classification', 'content_type', 'label', 'result'] %}
+                            {% set value = state_attr(entity, attr) %}
+                            {% if value is not none %}{% set ns.text = ns.text ~ ' ' ~ (value | string) %}{% endif %}
+                          {% endfor %}
+                        {% endif %}
+                      {% endfor %}{{ ns.text | lower }}
+                    eq_candidate: >-
+                      {% set haystack = content_text | lower %}
+                      {% set ns = namespace(mode='') %}
+                      {% for item in [('Game', game_keywords), ('Sport', sport_keywords),
+                                      ('Voice', voice_keywords), ('Music', music_keywords),
+                                      ('Movie', movie_keywords)] %}
+                        {% if ns.mode == '' %}
+                          {% for raw in item[1].split(',') %}
+                            {% set keyword = raw | trim | lower %}
+                            {% if keyword and keyword in haystack %}{% set ns.mode = item[0] %}{% endif %}
+                          {% endfor %}
+                        {% endif %}
+                      {% endfor %}{{ ns.mode if ns.mode else eq_fallback_mode }}
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ apply_night_mode and is_state(bar, 'on') and mode_trigger_affects_bar and 'Night' in supported_sound_modes and current_sound_mode != 'Night' }}"
+                        - condition: or
+                          conditions:
+                            - condition: template
+                              value_template: "{{ in_quiet_hours or night_binary_active or night_list_active }}"
+                            - condition: and
+                              conditions:
+                                - condition: template
+                                  value_template: "{{ night_ha_conditions | count > 0 }}"
+                                - condition: and
+                                  conditions: !input night_ha_conditions
+                            - condition: template
+                              value_template: !input night_condition_template
+                      sequence:
+                        - action: media_player.select_sound_mode
+                          continue_on_error: true
+                          target: {entity_id: "{{ bar }}"}
+                          data: {sound_mode: Night}
+
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ apply_eq_follow and is_state(bar, 'on') and mode_trigger_affects_bar and eq_candidate != 'No change' and eq_candidate in supported_sound_modes and current_sound_mode != eq_candidate }}"
+                        - condition: not
+                          conditions:
+                            - condition: or
+                              conditions:
+                                - condition: template
+                                  value_template: "{{ apply_night_mode and (in_quiet_hours or night_binary_active or night_list_active) }}"
+                                - condition: and
+                                  conditions:
+                                    - condition: template
+                                      value_template: "{{ apply_night_mode and night_ha_conditions | count > 0 }}"
+                                    - condition: and
+                                      conditions: !input night_ha_conditions
+                                - condition: and
+                                  conditions:
+                                    - condition: template
+                                      value_template: "{{ apply_night_mode }}"
+                                    - condition: template
+                                      value_template: !input night_condition_template
+                        - condition: or
+                          conditions:
+                            - condition: template
+                              value_template: "{{ eq_follow_ha_conditions | count == 0 }}"
+                            - condition: and
+                              conditions: !input eq_follow_ha_conditions
+                        - condition: template
+                          value_template: !input eq_follow_template
+                      sequence:
+                        - action: media_player.select_sound_mode
+                          continue_on_error: true
+                          target: {entity_id: "{{ bar }}"}
+                          data: {sound_mode: "{{ eq_candidate }}"}
+
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ apply_night_mode and is_state(bar, 'on') and mode_trigger_affects_bar and current_sound_mode == 'Night' and normal_sound_mode != 'No change' and normal_sound_mode in supported_sound_modes }}"
+                        - condition: not
+                          conditions:
+                            - condition: or
+                              conditions:
+                                - condition: template
+                                  value_template: "{{ in_quiet_hours or night_binary_active or night_list_active }}"
+                                - condition: and
+                                  conditions:
+                                    - condition: template
+                                      value_template: "{{ night_ha_conditions | count > 0 }}"
+                                    - condition: and
+                                      conditions: !input night_ha_conditions
+                                - condition: template
+                                  value_template: !input night_condition_template
+                      sequence:
+                        - action: media_player.select_sound_mode
+                          continue_on_error: true
+                          target: {entity_id: "{{ bar }}"}
+                          data: {sound_mode: "{{ normal_sound_mode }}"}
+
+'''
+bp = replace_between(bp, "actions:\n", "mode: queued\n", actions_section)
+
+# Update public and bundled copies together.
+PUBLIC_BP.write_text(bp, encoding="utf-8")
+BUNDLED_BP.write_text(bp, encoding="utf-8")
+
+# Manifest/version.
+manifest["version"] = VERSION
+MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+entry = '''## 2026.09.08.2
+
+### Added
+
+- Expanded Adaptive Room Audio into a reusable room-audio policy engine with three volume priorities: zero/mute, minimum, and scheduled/normal volume.
+- Every condition family now offers both Home Assistant's rich visual condition selector and a Jinja template alternative.
+- Added room-scoped and global room-list sources for minimum, zero/mute, ambient boost and Night policies. States may contain comma-separated room tokens; attributes may contain lists or comma-separated strings.
+- Added ambient-noise compensation with selectable binary/list/rich/template conditions, configurable boost amount, optional numeric boost entity, Min/Max application scope and cap.
+- Added connected-device activity gating using directly selected media players plus optional device and label selectors. Labels can automatically include labeled media-player entities or media players belonging to labeled devices.
+- Added zero/mute effects, optional custom actions, optional unmute behavior, Night condition groups, and EQ-follow rich/template gates.
+- Added extra trigger-entity selection for immediate reevaluation of arbitrary condition/template dependencies.
+
+### Changed
+
+- Manual Min/Max learning now understands the richer policy regimes and subtracts an active ambient boost before learning the base endpoint so boosts do not compound.
+- Manual changes during time fades remain non-learning interruptions; direct zero/Min policies remain immediate and have higher priority than the fade.
+- Connected/activity gating can leave an inactive room untouched or explicitly set its volume to zero.
+
+'''
+root_changelog = CHANGELOG.read_text(encoding="utf-8")
+if not root_changelog.startswith("# Changelog"):
+    raise RuntimeError("Unexpected changelog")
+pos = root_changelog.index("## ")
+root_changelog = root_changelog[:pos] + entry + root_changelog[pos:]
+CHANGELOG.write_text(root_changelog, encoding="utf-8")
+COMPONENT_CHANGELOG.write_text(root_changelog, encoding="utf-8")
+
+release_notes = '''# ULTIMEA 2026.09.08.2
+
+Adaptive Room Audio is now a full room-aware policy engine rather than only a quiet-hours controller.
+
+## Rich conditions everywhere
+
+Minimum volume, zero/mute priority, ambient boost, Night mode, connected/activity gating, EQ follow and manual-learning gates all expose Home Assistant's native visual condition editor. Every one also has a Jinja template alternative for advanced policies. Templates can use per-bar variables such as `bar`, `bar_area`, `in_quiet_hours`, Min/Max and trigger context.
+
+## Volume policy layers
+
+The priority order is **zero/mute → minimum → scheduled/normal**. Quiet-hour boundary fades remain the only smooth transitions; TTS, Assist, binary/list/custom conditions and zero/mute changes are direct. Manual volume changes during a fade stop that fade instead of being learned.
+
+Ambient-noise compensation can add a configurable number of percentage points in Min, normal operation or both, with an optional numeric entity source and selectable cap. Manual Min/Max learning subtracts an active boost before storing the base endpoint.
+
+## Room and device selection
+
+Each policy can use room-scoped room lists or global room lists. Room-list parsing accepts comma-separated state values plus list or comma-string attributes. Connected content/activity can be selected as media-player entities, devices, or labels; media players belonging to selected devices/labeled devices are included automatically.
+
+A shared extra-trigger selector lets users list entities referenced by custom conditions/templates for immediate reevaluation.
+'''
+(ROOT / f"RELEASE_NOTES_{VERSION}.md").write_text(release_notes, encoding="utf-8")
+(ROOT / "custom_components" / "ultimea" / f"RELEASE_NOTES_{VERSION}.md").write_text(release_notes, encoding="utf-8")
+
+# Documentation is intentionally explicit about precedence and template context.
+doc = '''# ULTIMEA Adaptive Room Audio blueprint
+
+`adaptive_room_audio.yaml` is a room-aware Home Assistant automation blueprint for ULTIMEA soundbars. It combines quiet-hour fading with priority policies, rich conditions, room lists, connected-device activity, manual-control protection, Night mode and EQ/content follow.
+
+## Policy priority
+
+Volume policy is evaluated per soundbar in this order:
+
+1. **Zero / mute priority** — direct, highest priority.
+2. **Minimum-volume policy** — quiet hours, TTS, Assist, binary/list/custom conditions and optionally Night conditions.
+3. **Scheduled / normal volume** — Max in ordinary operation, with the configured linear fade only immediately before/after quiet hours.
+4. **Ambient-noise boost** can modify steady Min and/or steady Max. It deliberately does not modify the time fade.
+
+Unavailable/off soundbars are skipped. A connected/activity gate can additionally leave a bar untouched when its connected source is inactive.
+
+## Rich conditions + templates
+
+Every major condition family provides both:
+
+- Home Assistant's native **Condition** selector, which supports nested AND/OR, entity/device state, numeric state, time, zone and template conditions; and
+- a dedicated **Template** selector for direct Jinja expressions.
+
+The condition list is optional. When it is non-empty, all conditions inside that list must pass for that custom source to activate. A group's template is an additional alternative (for activation groups) or AND-gate (for gating groups), as described in the blueprint UI.
+
+Per-bar templates can use `bar`, `bar_area`, `in_quiet_hours`, `min_volume`, `max_volume`, `trigger_id` and group-specific variables documented in each input. Select **Extra condition/template trigger entities** for any arbitrary entities referenced by templates/conditions when immediate reevaluation is needed; otherwise volume policy has a one-minute recovery tick.
+
+## Minimum / maximum endpoints
+
+Min and Max may be fixed 0–100% values or overridden by optional `input_number`, `number`, or numeric `sensor` entities. Entity values may use 0..1 or 0..100 and are normalized.
+
+Manual learning is opt-in. With a writable `input_number`/`number` endpoint, a manual change in steady Min learns Min and a manual change in normal operation learns Max. Read-only sensors and fixed blueprint numbers are never mutated. A separate rich condition + template can restrict when learning is allowed.
+
+When an ambient boost is active, learning subtracts the boost first so a 15% manually selected boosted volume with a +5% modifier learns a 10% base, not 15%.
+
+## Quiet hours and manual fade interruption
+
+Quiet hours may cross midnight. Before quiet start the volume moves linearly Max→Min; after quiet end it moves Min→Max in five-second steps. Other policy changes are direct.
+
+A manual volume change during either time fade is not learned. Transition ticks compare the current soundbar volume with the previous automation target; once the user moves away from the fade trajectory the automation leaves that value alone for the remainder of that uninterrupted fade window.
+
+## Room-list sources
+
+Minimum, zero/mute, boost and Night policies each have both **room-scoped** and **global** room-list selectors.
+
+A selected entity may provide tokens through:
+
+- its state (`living_room,kids_room`);
+- a list/tuple-like attribute; or
+- a comma-separated string attribute.
+
+Tokens may be area IDs, area names, entity IDs, `all`, or `*`. Room-scoped sources affect only matching soundbars. A global source affects every selected soundbar as soon as it contains any valid room token. This supports policies such as "any sleeping room lowers every bar" without hardcoded entities.
+
+## Zero / mute priority
+
+Zero/mute conditions can be selected from binary entities, room lists, rich HA conditions, or templates. The effect selector supports **Volume 0**, **Mute**, or **Volume 0 and mute**. Optional custom actions can run with `bar` and `bar_area` available.
+
+Automatic unmute is disabled by default because blindly unmuting could override a user's manual mute. Enable it only when the automation is intended to own mute state.
+
+## Ambient-noise compensation
+
+Noise conditions can come from binary entities, room lists, the rich condition editor, or a template. The boost is a fixed percentage-point value or an optional numeric entity. It can apply to Min, Max, or both steady regimes and can be capped at Max or 100%.
+
+This can model dehumidifiers, fans, 3D printers or any other noisy device without embedding model-specific logic in the blueprint.
+
+## Connected activity: entities, devices and labels
+
+Connected content can be selected three ways:
+
+- direct `media_player` entities;
+- Home Assistant **device** selector; or
+- Home Assistant **label** selector.
+
+For selected devices, their media-player entities are included automatically. For labels, directly labeled media-player entities and media players belonging to labeled devices are included. This allows a generic "TV" label policy without hardcoding entity IDs.
+
+The activity gate can be disabled, require any matching connected player to be active, or require one to be playing/buffering/on. A rich condition and template can further gate volume management. When the gate fails, the user can choose **Leave unchanged** or **Set volume 0**.
+
+## TTS and Assist
+
+Selected TTS media players request Min while playing/buffering. Selected Assist Satellites request Min whenever they are not idle/unknown/unavailable. Same-area matching is used; entities without an area are global.
+
+## Night mode
+
+Night is requested by scheduled quiet hours plus optional Night binary entities, room/global room lists, rich conditions and templates. A toggle decides whether non-time Night conditions should also request Min.
+
+Night/EQ changes remain event-driven rather than being enforced every minute, preserving manual sound-mode choices until relevant context changes.
+
+## EQ/content follow
+
+Connected media state plus metadata (`app_name`, title, artist, content type, channel, playlist, source, etc.) and optional classifier entities are matched against editable Game/Sport/Voice/Music/Movie keywords. A rich condition and template can gate EQ follow. Only sound modes present in the ULTIMEA entity's `sound_mode_list` are sent.
+
+The optional AI action hook is provider-neutral and may take screenshots/snapshots, invoke a vision/LLM integration, and update classifier entities.
+
+## Automatic installation
+
+ULTIMEA installs the bundled blueprint to `/config/blueprints/automation/ultimea/adaptive_room_audio.yaml` when the integration loads. Managed copies update automatically only while unchanged by the user; modified copies are preserved.
+'''
+DOC.write_text(doc, encoding="utf-8")
+
+# README badge + blueprint summary.
+readme = README.read_text(encoding="utf-8")
+readme = readme.replace("release-2026.09.08.1-blue", "release-2026.09.08.2-blue")
+readme = readme.replace(
+    "- lower volume immediately for selected binary conditions, comma-list room sensors, TTS playback, active Assist satellites, or a night-mode boolean;\n",
+    "- evaluate zero/mute, Min and ambient-noise boost policies from selectable binary entities, room/global room lists, rich HA conditions or Jinja templates;\n"
+    "- gate control by connected media players, selected devices or labels, with rich/template conditions and extra reevaluation triggers;\n",
+)
+README.write_text(readme, encoding="utf-8")
+
+# Blueprint regression tests.
+test = '''from __future__ import annotations
+
+from pathlib import Path
+
+import jinja2
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+BLUEPRINT = ROOT / "blueprints" / "automation" / "ultimea" / "adaptive_room_audio.yaml"
+
+
+class BlueprintLoader(yaml.SafeLoader):
+    """YAML loader that preserves Home Assistant's !input tag."""
+
+
+def _unique_mapping(loader: BlueprintLoader, node: yaml.MappingNode, deep: bool = False):
+    mapping = {}
+    for key_node, value_node in node.value:
+        key = loader.construct_object(key_node, deep=deep)
+        if key in mapping:
+            raise AssertionError(f"Duplicate YAML key: {key!r}")
+        mapping[key] = loader.construct_object(value_node, deep=deep)
+    return mapping
+
+
+BlueprintLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping)
+BlueprintLoader.add_constructor("!input", lambda loader, node: {"!input": loader.construct_scalar(node)})
+
+
+def _load_blueprint() -> dict:
+    return yaml.load(BLUEPRINT.read_text(encoding="utf-8"), Loader=BlueprintLoader)
+
+
+def _walk_templates(value):
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _walk_templates(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _walk_templates(item)
+    elif isinstance(value, str) and ("{{" in value or "{%" in value):
+        yield value
+
+
+def _inputs(data: dict) -> dict:
+    return {
+        key: value
+        for section in data["blueprint"]["input"].values()
+        for key, value in section["input"].items()
+    }
+
+
+def test_adaptive_audio_blueprint_yaml_and_jinja_are_valid() -> None:
+    data = _load_blueprint()
+    assert data["blueprint"]["domain"] == "automation"
+    assert data["blueprint"]["homeassistant"]["min_version"] == "2026.7.0"
+    env = jinja2.Environment()
+    for template in _walk_templates(data):
+        env.parse(template)
+
+
+def test_blueprint_exposes_policy_engine_inputs() -> None:
+    inputs = _inputs(_load_blueprint())
+    required = {
+        "ultimea_players", "min_volume_value", "min_volume_helper",
+        "max_volume_value", "max_volume_helper", "quiet_start", "quiet_end",
+        "low_volume_binary_entities", "list_state_entities", "global_list_state_entities",
+        "minimum_ha_conditions", "minimum_condition_template",
+        "zero_binary_entities", "zero_room_list_entities", "zero_global_list_entities",
+        "zero_ha_conditions", "zero_condition_template", "zero_effect", "zero_extra_actions",
+        "boost_binary_entities", "boost_room_list_entities", "boost_global_list_entities",
+        "boost_ha_conditions", "boost_condition_template", "boost_amount_value",
+        "boost_amount_entity", "boost_apply_when", "boost_cap",
+        "night_mode_entities", "night_room_list_entities", "night_global_list_entities",
+        "night_ha_conditions", "night_condition_template", "night_conditions_request_minimum",
+        "connected_activity_mode", "connected_activity_ha_conditions", "connected_activity_template",
+        "inactive_policy_behavior", "extra_policy_trigger_entities",
+        "connected_media_players", "connected_devices", "connected_labels",
+        "eq_follow_ha_conditions", "eq_follow_template", "ai_content_actions",
+        "learn_manual_volume_changes", "manual_learning_ha_conditions", "manual_learning_template",
+        "apply_volume_follow", "apply_night_mode", "apply_eq_follow",
+    }
+    assert required <= inputs.keys()
+
+
+def test_every_policy_condition_family_has_rich_and_template_paths() -> None:
+    inputs = _inputs(_load_blueprint())
+    pairs = (
+        ("minimum_ha_conditions", "minimum_condition_template"),
+        ("zero_ha_conditions", "zero_condition_template"),
+        ("boost_ha_conditions", "boost_condition_template"),
+        ("night_ha_conditions", "night_condition_template"),
+        ("connected_activity_ha_conditions", "connected_activity_template"),
+        ("eq_follow_ha_conditions", "eq_follow_template"),
+        ("manual_learning_ha_conditions", "manual_learning_template"),
+    )
+    for rich, template in pairs:
+        assert "condition" in inputs[rich]["selector"]
+        assert "template" in inputs[template]["selector"]
+
+
+def test_rich_connected_selectors_and_room_list_modes_exist() -> None:
+    inputs = _inputs(_load_blueprint())
+    assert inputs["connected_devices"]["selector"]["device"]["multiple"] is True
+    assert inputs["connected_labels"]["selector"]["label"]["multiple"] is True
+    for key in (
+        "list_state_entities", "global_list_state_entities",
+        "zero_room_list_entities", "zero_global_list_entities",
+        "boost_room_list_entities", "boost_global_list_entities",
+        "night_room_list_entities", "night_global_list_entities",
+    ):
+        assert inputs[key]["selector"]["entity"]["multiple"] is True
+
+
+def test_policy_actions_include_priority_boost_gate_and_manual_guard() -> None:
+    text = BLUEPRINT.read_text(encoding="utf-8")
+    for expected in (
+        "zero_effect", "media_player.volume_mute", "zero_extra_actions",
+        "boost_delta", "boost_cap", "boost_apply_when",
+        "connected_builtin_gate", "connected_active_count", "connected_playing_count",
+        "label_entities(", "label_devices(", "device_entities(",
+        "minimum_global_area_ids", "zero_global_area_ids", "boost_global_area_ids", "night_global_area_ids",
+        "fade_interrupted_by_manual_volume", "previous_scheduled_volume",
+        "manual_learning_base", "manual_learning_ha_conditions",
+        "number.set_value", "input_number.set_value",
+        "media_player.select_sound_mode", "eq_follow_ha_conditions",
+    ):
+        assert expected in text
+
+
+def test_blueprint_does_not_hardcode_private_policy_entities() -> None:
+    text = BLUEPRINT.read_text(encoding="utf-8").lower()
+    for forbidden in (
+        "binary_sensor.abwesend", "sensor.sleeprooms", "fritzbox_callmonitor",
+        "eingang_people_counter", "input_number.tv_min_vol", "input_number.tv_max_vol",
+        "chreece", "dehumidifier", "3d_printer",
+    ):
+        assert forbidden not in text
+'''
+TEST.write_text(test, encoding="utf-8")
+
+print(f"Transformed Adaptive Room Audio to {VERSION}")
