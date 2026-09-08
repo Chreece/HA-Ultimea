@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08.2-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08.3-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -126,6 +126,7 @@ The repository includes [`ULTIMEA Adaptive Room Audio`](blueprints/automation/ul
 
 - use fixed numeric min/max volume or optional numeric entity sources, with opt-in learning from manual volume changes;
 - bind an optional `input_select`/`select` audio-input selector to each soundbar by Home Assistant area; the picker is searchable by friendly label and ambiguous/unassigned selectors are ignored;
+- give each soundbar area an optional numeric normal-volume entity, such as an `input_number` dashboard slider, with the global maximum used only as fallback;
 - apply quiet hours (ώρες κοινής ησυχίας), including smooth before/after boundary fades and guarded five-second-step handoff/restores;
 - lower volume immediately for selected binary conditions, room-list state/attribute sources, TTS playback, active Assist satellites, or a night-mode boolean;
 - select **Night** during quiet conditions;

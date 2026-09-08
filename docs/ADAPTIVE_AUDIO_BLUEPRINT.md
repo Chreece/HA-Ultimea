@@ -41,10 +41,28 @@ starts, or that soundbar turns on.
 
 ## Minimum and maximum volume
 
-Each endpoint can be configured as a fixed **0–100%** number and can optionally
-be overridden by a numeric Home Assistant entity. Supported entity domains are
-`input_number`, `number`, and `sensor`. Entity values may be expressed as either
-`0..1` or `0..100`; the blueprint normalizes them automatically.
+### Optional per-zone normal volume
+
+You can select multiple numeric entities as **Per-zone normal-volume entities**.
+For each ULTIMEA soundbar, the blueprint looks for exactly one selected numeric
+entity in the same Home Assistant area:
+
+- one match: that value becomes the soundbar's normal/maximum endpoint;
+- no match: the global maximum below is used;
+- more than one match: the area is treated as ambiguous and the global maximum is
+  used rather than guessing;
+- an `input_number` helper is ideal when you want a persistent dashboard slider;
+- writable `input_number`/`number` zone entities can learn manual normal-volume
+  changes when learning is enabled; sensors remain read-only.
+
+The minimum/quiet endpoint remains global. Quiet-hour fades are calculated from
+each soundbar's effective zone maximum down to that shared minimum, so different
+zones can follow the same quiet-hours policy without sharing their normal volume.
+
+The shared minimum and global-fallback maximum keep the existing fixed numeric
+value plus optional numeric-entity override behavior. Supported domains are
+`input_number`, `number`, and `sensor`, with automatic normalization of 0–1 and
+0–100 values.
 
 **Learn min/max from manual volume changes** is an explicit option and is disabled
 by default. When enabled:
@@ -58,8 +76,8 @@ by default. When enabled:
 - manual changes during a quiet-hours fade do not learn either endpoint. They
   interrupt that fade instead.
 
-For different rooms with independent dynamic endpoints, create separate blueprint
-instances and use separate numeric entities.
+For fully separate quiet/minimum endpoints or different schedules, create separate
+blueprint instances. Per-zone normal volume no longer requires separate instances.
 
 ## Quiet hours (ώρες κοινής ησυχίας)
 
@@ -73,7 +91,7 @@ Quiet hours may cross midnight, for example `22:00` to `07:00`.
   minimum to maximum.
 - The fade is stepped every five seconds. If the user changes the soundbar volume during the fade, the fade stays stopped for that soundbar for the rest of the transition window. A direct minimum-volume condition such as TTS can still override while it is active.
 - When automation later needs to return from ducking or retake a target after an interrupted boundary fade, the **Guarded handoff / restore duration** is used instead of one abrupt volume jump. The handoff also uses fixed five-second steps and each step is allowed only while the observed volume still matches the previous expected step. A manual/external change therefore aborts the handoff. Queued intermediate volume events are checked against the current live volume, so stale self-generated steps cannot be learned later as manual changes.
-- If an automation-originated duck ends while a quiet-boundary fade is already active, recovery is limited to one normal boundary-fade step at a time rather than jumping directly to the current scheduled point.
+- If an automation-originated duck ends while a quiet-boundary fade is active, the guarded handoff projects to the point the scheduled fade will reach when the handoff completes; normal fixed five-second boundary ticks resume from there.
 - TTS, active binary conditions, Assist activity, list-state conditions, and a
   night-mode boolean switch to minimum volume immediately. Those non-time
   transitions are deliberately not faded.

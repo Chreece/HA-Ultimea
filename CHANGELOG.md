@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.08.3
+
+### Added
+
+- Added optional per-zone normal-volume entities. Exactly one numeric entity in the same Home Assistant area as a soundbar overrides the global maximum/normal volume for that zone; unassigned or ambiguous matches safely fall back to the global maximum.
+- `input_number`/`number` zone volume entities participate in manual normal-volume learning, while sensor-backed zone volumes remain read-only.
+
+### Changed
+
+- Quiet-hour fades and guarded restore/handoff targets now calculate against each soundbar's effective zone maximum while retaining the shared global minimum/quiet endpoint and fixed five-second transition stepping.
+
 ## 2026.09.08.2
 
 ### Added
