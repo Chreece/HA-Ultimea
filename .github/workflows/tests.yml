@@ -48,7 +48,11 @@ jobs:
       - name: Compile integration
         run: .venv/bin/python -m compileall -q custom_components/ultimea
       - name: Protocol and blueprint tests
-        run: .venv/bin/python -m pytest -q tests
+        run: |
+          echo '--- generated blueprint around YAML failure ---'
+          nl -ba blueprints/automation/ultimea/adaptive_room_audio.yaml | sed -n '1468,1498p'
+          echo '--- end diagnostic ---'
+          .venv/bin/python -m pytest -q tests
       - name: Validate generated no-polling tree
         run: |
           .venv/bin/python - <<'PY'
