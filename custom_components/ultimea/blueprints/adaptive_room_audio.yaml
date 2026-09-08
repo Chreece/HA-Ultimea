@@ -635,10 +635,11 @@ actions:
            and trigger.to_state is not none
            and trigger.from_state.attributes.get('volume_level') != trigger.to_state.attributes.get('volume_level')
            and trigger.to_state.attributes.get('volume_level') is not none }}
-      bar_volume_automation_context: >-
+      bar_volume_trigger_is_current: >-
         {{ bar_volume_changed
-           and trigger.to_state.context.user_id is none
-           and trigger.to_state.context.parent_id is not none }}
+           and state_attr(trigger_entity, 'volume_level') is not none
+           and (state_attr(trigger_entity, 'volume_level') | float(0)
+                - trigger.to_state.attributes.get('volume_level') | float(0)) | abs <= 0.004 }}
       bar_became_on: >-
         {{ trigger_id == 'bar_change'
            and trigger.from_state is not none
@@ -646,16 +647,16 @@ actions:
            and trigger.from_state.state != 'on'
            and trigger.to_state.state == 'on' }}
 
-  # A volume attribute change on an ULTIMEA media player is special: if it is
-  # not the value this blueprint currently calculates, treat it as a manual
-  # adjustment and learn it into the active endpoint. Self-generated volume
-  # updates match the calculated target and are ignored here.
+  # A current volume attribute change on an ULTIMEA media player is special:
+  # if it is not the value this blueprint currently calculates, treat it as a
+  # manual adjustment and learn it into the active endpoint. Queued stale events
+  # from intermediate handoff steps are ignored once the live volume has moved on.
   - choose:
       - conditions:
           - condition: template
             value_template: >-
               {{ apply_volume_follow and bar_volume_changed
-                 and not bar_volume_automation_context }}
+                 and bar_volume_trigger_is_current }}
         sequence:
           - variables:
               manual_bar: "{{ trigger_entity }}"
@@ -848,48 +849,56 @@ actions:
                       {{ state_attr(bar, 'volume_level') | float(-1) }}
                     previous_transition_target: >-
                       {{ previous_scheduled_volume | float(desired_volume) | round(2) }}
-                    current_volume_automation_context: >-
-                      {% set obj = expand(bar) | first %}
-                      {{ obj is not none
-                         and obj.context.user_id is none
-                         and obj.context.parent_id is not none }}
+                    boundary_retake_allowed: >-
+                      {{ trigger_id in ['startup', 'volume_source',
+                                        'low_binary_change', 'list_change',
+                                        'tts_change', 'voice_change',
+                                        'night_override_change']
+                         or bar_became_on }}
                     fade_interrupted_by_manual_volume: >-
                       {{ not extra_low
                          and (before_transition_active or after_transition_active)
                          and current_volume >= 0
-                         and not current_volume_automation_context
+                         and not boundary_retake_allowed
                          and (current_volume - previous_transition_target) | abs > 0.004 }}
                     fade_can_adjust: >-
                       {{ not (before_transition_active or after_transition_active)
                          or extra_low
                          or not fade_interrupted_by_manual_volume }}
-                    boundary_step_size: >-
+                    guarded_handoff_steps: >-
+                      {{ [2, ((handoff_transition_seconds / 5) | round(0, 'ceil') | int) + 1] | max }}
+                    guarded_handoff_duration: >-
+                      {{ ((guarded_handoff_steps | int) - 1) * 5 }}
+                    boundary_handoff_target: >-
                       {% if before_transition_active and transition_before_seconds > 0 %}
-                        {{ ((max_volume - min_volume) | abs) * 5 / transition_before_seconds }}
+                        {% set future_until = [0, seconds_until_quiet_start - guarded_handoff_duration] | max %}
+                        {% set progress = 1 - (future_until / transition_before_seconds) %}
+                        {{ max_volume - ((max_volume - min_volume) * progress) }}
                       {% elif after_transition_active and transition_after_seconds > 0 %}
-                        {{ ((max_volume - min_volume) | abs) * 5 / transition_after_seconds }}
-                      {% else %}
-                        0
-                      {% endif %}
-                    boundary_step_target: >-
-                      {% if (before_transition_active or after_transition_active)
-                            and current_volume >= 0 %}
-                        {% set step = boundary_step_size | float(0) %}
-                        {% if desired_volume > current_volume %}
-                          {{ [desired_volume, current_volume + step] | min }}
-                        {% else %}
-                          {{ [desired_volume, current_volume - step] | max }}
-                        {% endif %}
+                        {% set future_since = [transition_after_seconds, seconds_since_quiet_end + guarded_handoff_duration] | min %}
+                        {% set progress = future_since / transition_after_seconds %}
+                        {{ min_volume + ((max_volume - min_volume) * progress) }}
                       {% else %}
                         {{ desired_volume }}
                       {% endif %}
+                    boundary_guarded_handoff_required: >-
+                      {{ not extra_low
+                         and (before_transition_active or after_transition_active)
+                         and boundary_retake_allowed
+                         and current_volume >= 0
+                         and (current_volume - boundary_handoff_target) | abs > 0.009 }}
                     guarded_handoff_required: >-
                       {{ not extra_low
-                         and not (before_transition_active or after_transition_active)
                          and current_volume >= 0
-                         and (current_volume - desired_volume) | abs > 0.009 }}
-                    guarded_handoff_steps: >-
-                      {{ [2, ((handoff_transition_seconds / 5) | round(0, 'ceil') | int) + 1] | max }}
+                         and (
+                           boundary_guarded_handoff_required
+                           or (not (before_transition_active or after_transition_active)
+                               and (current_volume - desired_volume) | abs > 0.009)
+                         ) }}
+                    guarded_handoff_target: >-
+                      {{ boundary_handoff_target
+                         if (before_transition_active or after_transition_active)
+                         else desired_volume }}
                 - choose:
                     # Urgent ducking remains immediate by design.
                     - conditions:
@@ -904,17 +913,19 @@ actions:
                             entity_id: "{{ bar }}"
                           data:
                             volume_level: "{{ [[desired_volume, 0.0] | max, 1.0] | min | round(2) }}"
-                    # A quiet-boundary fade may catch up only one normal five-second
-                    # step at a time. A manual mismatch still stops that fade.
+                    # Normal scheduled boundary ticks remain fixed-step. A manual
+                    # mismatch stops the fade unless an explicit policy event is
+                    # currently initiating a guarded re-entry below.
                     - conditions:
                         - condition: template
                           value_template: >-
                             {{ is_state(bar, 'on')
                                and not extra_low
                                and (before_transition_active or after_transition_active)
+                               and not boundary_guarded_handoff_required
                                and fade_can_adjust
                                and (current_volume < 0
-                                    or (current_volume - boundary_step_target) | abs > 0.009) }}
+                                    or (current_volume - desired_volume) | abs > 0.009) }}
                       sequence:
                         - action: media_player.volume_set
                           continue_on_error: true
@@ -922,10 +933,12 @@ actions:
                             entity_id: "{{ bar }}"
                           data:
                             volume_level: >-
-                              {{ [[boundary_step_target, 0.0] | max, 1.0] | min | round(2) }}
-                    # Outside a scheduled boundary fade, restore automation policy
-                    # gradually. Each next step is allowed only if the preceding
-                    # expected volume is still present.
+                              {{ [[desired_volume, 0.0] | max, 1.0] | min | round(2) }}
+                    # A non-urgent restore, or an explicit re-entry into an active
+                    # quiet-boundary fade, completes in one guarded sequence. The
+                    # boundary target is projected to where the scheduled fade will
+                    # be when the handoff finishes, so subsequent timer ticks resume
+                    # on-track without relying on context.parent_id.
                     - conditions:
                         - condition: template
                           value_template: >-
@@ -933,7 +946,7 @@ actions:
                       sequence:
                         - variables:
                             handoff_start_volume: "{{ current_volume | float(0) }}"
-                            handoff_target_volume: "{{ desired_volume | float(0) }}"
+                            handoff_target_volume: "{{ guarded_handoff_target | float(0) }}"
                             handoff_step_delta: >-
                               {{ (handoff_target_volume - handoff_start_volume)
                                  / (guarded_handoff_steps | int) }}
@@ -989,9 +1002,56 @@ actions:
                                       {% endif %}
                                     {% endfor %}
                                     {{ ns.active }}
+                                  handoff_list_low_now: >-
+                                    {% set ns = namespace(active=false) %}
+                                    {% for holder in list_state_entities %}
+                                      {% set obj = expand(holder) | first %}
+                                      {% if obj is not none %}
+                                        {% for raw in (obj.state | string).split(',') %}
+                                          {% set token = raw | trim %}
+                                          {% if token | lower in ['all', '*'] %}
+                                            {% set ns.active = true %}
+                                          {% elif token and bar_area != '' %}
+                                            {% set resolved = token if token in areas() else area_id(token) %}
+                                            {% if resolved == bar_area %}
+                                              {% set ns.active = true %}
+                                            {% endif %}
+                                          {% endif %}
+                                        {% endfor %}
+                                        {% for value in obj.attributes.values() %}
+                                          {% if value is string and ',' in value %}
+                                            {% for raw in value.split(',') %}
+                                              {% set token = raw | trim %}
+                                              {% if token | lower in ['all', '*'] %}
+                                                {% set ns.active = true %}
+                                              {% elif token and bar_area != '' %}
+                                                {% set resolved = token if token in areas() else area_id(token) %}
+                                                {% if resolved == bar_area %}
+                                                  {% set ns.active = true %}
+                                                {% endif %}
+                                              {% endif %}
+                                            {% endfor %}
+                                          {% elif value is iterable and value is not string and value is not mapping %}
+                                            {% for raw in value %}
+                                              {% set token = raw | string | trim %}
+                                              {% if token | lower in ['all', '*'] %}
+                                                {% set ns.active = true %}
+                                              {% elif token and bar_area != '' %}
+                                                {% set resolved = token if token in areas() else area_id(token) %}
+                                                {% if resolved == bar_area %}
+                                                  {% set ns.active = true %}
+                                                {% endif %}
+                                              {% endif %}
+                                            {% endfor %}
+                                          {% endif %}
+                                        {% endfor %}
+                                      {% endif %}
+                                    {% endfor %}
+                                    {{ ns.active }}
                                   handoff_low_now: >-
                                     {{ handoff_binary_low_now or handoff_tts_low_now
-                                       or handoff_voice_low_now or handoff_night_low_now }}
+                                       or handoff_voice_low_now or handoff_night_low_now
+                                       or handoff_list_low_now }}
                               - choose:
                                   - conditions:
                                       - condition: template

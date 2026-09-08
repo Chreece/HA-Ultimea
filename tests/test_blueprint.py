@@ -149,11 +149,14 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "matching_audio_selectors" in text
     assert "requested_source" in text
     assert "source_list" in text
-    assert "bar_volume_automation_context" in text
+    assert "bar_volume_trigger_is_current" in text
     assert "guarded_handoff_required" in text
     assert "guarded_handoff_steps" in text
     assert "handoff_expected_before" in text
-    assert "boundary_step_target" in text
+    assert "boundary_retake_allowed" in text
+    assert "boundary_guarded_handoff_required" in text
+    assert "boundary_handoff_target" in text
+    assert "handoff_list_low_now" in text
     assert "delay: \"00:00:05\"" in text
     assert "manual_in_time_transition" in text
     assert "area_id(" in text

@@ -72,7 +72,7 @@ Quiet hours may cross midnight, for example `22:00` to `07:00`.
 - **After** quiet hours, the configured transition duration linearly fades from
   minimum to maximum.
 - The fade is stepped every five seconds. If the user changes the soundbar volume during the fade, the fade stays stopped for that soundbar for the rest of the transition window. A direct minimum-volume condition such as TTS can still override while it is active.
-- When automation later needs to return from ducking or retake a target after an interrupted boundary fade, the **Guarded handoff / restore duration** is used instead of one abrupt volume jump. The handoff also uses fixed five-second steps and each step is allowed only while the observed volume still matches the previous expected step. A manual/external change therefore aborts the handoff.
+- When automation later needs to return from ducking or retake a target after an interrupted boundary fade, the **Guarded handoff / restore duration** is used instead of one abrupt volume jump. The handoff also uses fixed five-second steps and each step is allowed only while the observed volume still matches the previous expected step. A manual/external change therefore aborts the handoff. Queued intermediate volume events are checked against the current live volume, so stale self-generated steps cannot be learned later as manual changes.
 - If an automation-originated duck ends while a quiet-boundary fade is already active, recovery is limited to one normal boundary-fade step at a time rather than jumping directly to the current scheduled point.
 - TTS, active binary conditions, Assist activity, list-state conditions, and a
   night-mode boolean switch to minimum volume immediately. Those non-time

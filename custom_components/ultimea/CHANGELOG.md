@@ -14,7 +14,7 @@ The project uses calendar versioning for public releases: `YYYY.MM.DD` with patc
 ### Changed
 
 - Quiet-boundary recovery is clamped to the existing five-second fade slope, so returning from an automation-originated duck cannot jump directly to a distant scheduled target.
-- Automation-originated intermediate volume states are excluded from manual-volume learning, while direct minimum-volume requests such as TTS/Assist remain immediate.
+- Queued stale intermediate handoff volume events are ignored once the live soundbar volume has advanced, preventing self-generated steps from being learned as manual changes; direct minimum-volume requests such as TTS/Assist remain immediate.
 
 ## 2026.09.08.1
 
