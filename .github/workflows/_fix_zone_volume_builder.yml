@@ -1,0 +1,46 @@
+name: Fix ULTIMEA per-zone builder
+
+on:
+  push:
+    branches:
+      - dev/adaptive-zone-volume-20260908
+
+permissions:
+  contents: write
+
+jobs:
+  fix-builder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev/adaptive-zone-volume-20260908
+          fetch-depth: 0
+      - name: Correct documentation patch anchor
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/_ultimea_zone_volume_patch.yml')
+          text = path.read_text(encoding='utf-8')
+
+          old_anchor = "'## Minimum and maximum volume\\n\\nMinimum and maximum can each come from either:\\n'"
+          new_anchor = "'## Minimum and maximum volume\\n\\nEach endpoint can be configured as a fixed **0–100%** number and can optionally\\nbe overridden by a numeric Home Assistant entity. Supported entity domains are\\n`input_number`, `number`, and `sensor`. Entity values may be expressed as either\\n`0..1` or `0..100`; the blueprint normalizes them automatically.\\n'"
+          assert text.count(old_anchor) == 1
+          text = text.replace(old_anchor, new_anchor, 1)
+
+          old_tail = "Minimum and global-fallback maximum can each come from either:\\n'''"
+          new_tail = "The shared minimum and global-fallback maximum keep the existing fixed numeric\\nvalue plus optional numeric-entity override behavior. Supported domains are\\n`input_number`, `number`, and `sensor`, with automatic normalization of 0–1 and\\n0–100 values.\\n'''"
+          assert text.count(old_tail) == 1
+          text = text.replace(old_tail, new_tail, 1)
+
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Remove fixer and push corrected builder
+        run: |
+          rm .github/workflows/_fix_zone_volume_builder.yml
+          git config user.name "Chris Chreece"
+          git config user.email "68458228+Chreece@users.noreply.github.com"
+          git add -A
+          git commit -m "Correct per-zone volume builder docs anchor"
+          git push origin HEAD:dev/adaptive-zone-volume-20260908
