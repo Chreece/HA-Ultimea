@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.08.5
+
+### Fixed
+
+- Managed Adaptive Room Audio blueprint updates now reload the live Home Assistant automation definition after startup when the Automation integration had already expanded an older copy. Removed triggers such as the old permanent five-second `transition_tick` therefore cannot remain active after an integration update just because of component setup order.
+- Existing automations that reference the ULTIMEA blueprint are reloaded by their automation ID when possible. A brand-new blueprint installation falls back to one full automation reload because automations that previously failed on a missing blueprint cannot be discovered by blueprint reference.
+- User-modified or otherwise unmanaged blueprint files remain preserved and are never overwritten or auto-reloaded by this path.
+
 ## 2026.09.08.4
 
 ### Changed
