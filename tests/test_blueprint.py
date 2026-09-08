@@ -71,10 +71,12 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
 
     required = {
         "ultimea_players",
+        "audio_input_selectors",
         "quiet_start",
         "quiet_end",
         "transition_before",
         "transition_after",
+        "handoff_transition",
         "min_volume_value",
         "min_volume_helper",
         "max_volume_value",
@@ -109,6 +111,12 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         domains = selector["filter"][0]["domain"]
         assert domains == ["input_number", "number", "sensor"]
 
+    source_selector = inputs["audio_input_selectors"]["selector"]["entity"]
+    assert source_selector["multiple"] is True
+    assert source_selector["filter"][0]["domain"] == ["input_select", "select"]
+    assert inputs["audio_input_selectors"]["default"] == []
+    assert inputs["handoff_transition"]["default"]["seconds"] == 15
+
 
 def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     text = BLUEPRINT.read_text(encoding="utf-8")
@@ -117,6 +125,7 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
         "input_number.set_value",
         "media_player.volume_set",
         "media_player.select_sound_mode",
+        "media_player.select_source",
     ):
         assert action in text
 
@@ -136,6 +145,16 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "previous_scheduled_volume" in text
     assert "fade_interrupted_by_manual_volume" in text
     assert "fade_can_adjust" in text
+    assert "audio_input_change" in text
+    assert "matching_audio_selectors" in text
+    assert "requested_source" in text
+    assert "source_list" in text
+    assert "bar_volume_automation_context" in text
+    assert "guarded_handoff_required" in text
+    assert "guarded_handoff_steps" in text
+    assert "handoff_expected_before" in text
+    assert "boundary_step_target" in text
+    assert "delay: \"00:00:05\"" in text
     assert "manual_in_time_transition" in text
     assert "area_id(" in text
     assert "sound_mode_list" in text

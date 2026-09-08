@@ -18,6 +18,27 @@ The blueprint has three independent feature switches:
 A soundbar is only written while its Home Assistant media-player entity is `on`.
 Unavailable, unknown and powered-off bars are skipped.
 
+## Audio-input selectors
+
+You can optionally select one `input_select` or `select` entity for each soundbar
+area. Home Assistant's entity picker can be searched by the entity's friendly
+name/label; the stored blueprint value remains the stable entity ID. This removes
+the need to hard-code a particular `input_select.*` ID.
+
+Source selectors are intentionally **zone-local**:
+
+- assign the selector and ULTIMEA media player to the same Home Assistant area;
+- exactly one selector in that area is required before the blueprint writes a
+  source;
+- selectors without an area are not treated as global;
+- multiple matching selectors are treated as ambiguous and are ignored;
+- supported values are the soundbar's reported sources (`eARC`, `HDMI`, `Optical`,
+  `AUX`, `Bluetooth`, `USB`) plus common aliases such as `ARC`, `SPDIF`, and `BT`.
+
+Source follow is event-driven. A manual source choice is not continuously fought;
+the blueprint acts again only when the configured selector changes, Home Assistant
+starts, or that soundbar turns on.
+
 ## Minimum and maximum volume
 
 Each endpoint can be configured as a fixed **0–100%** number and can optionally
@@ -51,6 +72,8 @@ Quiet hours may cross midnight, for example `22:00` to `07:00`.
 - **After** quiet hours, the configured transition duration linearly fades from
   minimum to maximum.
 - The fade is stepped every five seconds. If the user changes the soundbar volume during the fade, the fade stays stopped for that soundbar for the rest of the transition window. A direct minimum-volume condition such as TTS can still override while it is active.
+- When automation later needs to return from ducking or retake a target after an interrupted boundary fade, the **Guarded handoff / restore duration** is used instead of one abrupt volume jump. The handoff also uses fixed five-second steps and each step is allowed only while the observed volume still matches the previous expected step. A manual/external change therefore aborts the handoff.
+- If an automation-originated duck ends while a quiet-boundary fade is already active, recovery is limited to one normal boundary-fade step at a time rather than jumping directly to the current scheduled point.
 - TTS, active binary conditions, Assist activity, list-state conditions, and a
   night-mode boolean switch to minimum volume immediately. Those non-time
   transitions are deliberately not faded.

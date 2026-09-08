@@ -17,6 +17,16 @@ blueprint:
     Any token that resolves to the same area as a soundbar requests minimum volume.
     The special values `all` and `*` apply globally.
 
+    Optional audio-input selector entities are paired to soundbars by Home
+    Assistant area. The entity picker can be searched by friendly name/label;
+    Home Assistant stores the selected entity ID. Exactly one selector must match
+    a soundbar area, so unassigned or ambiguous selectors never act globally.
+
+    Automatic restore/handoff changes use a guarded fixed-step transition. The
+    volume advances every five seconds and stops if the user or another control
+    changes the soundbar away from the expected intermediate value. Direct
+    minimum-volume requests remain immediate.
+
     EQ follow uses media-player state plus common content attributes such as
     app_name, media_title, media_content_type and source. Optional classifier
     entities can provide labels such as Movie, Music, Voice, Sport or Game. An
@@ -41,6 +51,23 @@ blueprint:
               filter:
                 - integration: ultimea
                   domain: media_player
+        audio_input_selectors:
+          name: Audio-input selectors (optional)
+          description: >-
+            Select input_select/select entities used to choose each soundbar's
+            audio source. Home Assistant's entity picker can be searched by the
+            entity's friendly name/label while the blueprint stores its entity ID.
+            Put each selector in the same Home Assistant area as its soundbar.
+            Exactly one selector must match a soundbar area; selectors without an
+            area and ambiguous same-area matches are ignored.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - input_select
+                    - select
         min_volume_value:
           name: Minimum volume
           description: >-
@@ -137,6 +164,24 @@ blueprint:
             hours: 0
             minutes: 30
             seconds: 0
+          selector:
+            duration:
+              enable_day: false
+              enable_second: true
+        handoff_transition:
+          name: Guarded handoff / restore duration
+          description: >-
+            Duration used when automation control returns to a non-urgent target,
+            for example after ducking ends or after a manually interrupted quiet-
+            hours fade reaches its boundary. The transition always uses fixed
+            five-second steps. If the actual volume stops matching the expected
+            intermediate value, the handoff stops instead of fighting the user.
+            Values shorter than five seconds are clamped to one five-second
+            interval so a handoff never becomes a single abrupt jump.
+          default:
+            hours: 0
+            minutes: 0
+            seconds: 15
           selector:
             duration:
               enable_day: false
@@ -334,6 +379,7 @@ blueprint:
 
 variables:
   ultimea_players: !input ultimea_players
+  audio_input_selectors: !input audio_input_selectors
   min_volume_value: !input min_volume_value
   min_volume_source_input: !input min_volume_helper
   max_volume_value: !input max_volume_value
@@ -342,6 +388,7 @@ variables:
   quiet_end_time: !input quiet_end
   transition_before_value: !input transition_before
   transition_after_value: !input transition_after
+  handoff_transition_value: !input handoff_transition
   low_volume_binary_entities: !input low_volume_binary_entities
   list_state_entities: !input list_state_entities
   tts_media_players: !input tts_media_players
@@ -390,6 +437,9 @@ triggers:
     entity_id: !input max_volume_helper
     id: volume_source
   - trigger: state
+    entity_id: !input audio_input_selectors
+    id: audio_input_change
+  - trigger: state
     entity_id: !input low_volume_binary_entities
     id: low_binary_change
   - trigger: state
@@ -434,6 +484,10 @@ actions:
         {{ (transition_after_value.get('hours', 0) | int) * 3600
            + (transition_after_value.get('minutes', 0) | int) * 60
            + (transition_after_value.get('seconds', 0) | int) }}
+      handoff_transition_seconds: >-
+        {{ (handoff_transition_value.get('hours', 0) | int) * 3600
+           + (handoff_transition_value.get('minutes', 0) | int) * 60
+           + (handoff_transition_value.get('seconds', 0) | int) }}
       min_volume_entity: >-
         {% if min_volume_source_input is string %}
           {{ min_volume_source_input }}
@@ -581,6 +635,10 @@ actions:
            and trigger.to_state is not none
            and trigger.from_state.attributes.get('volume_level') != trigger.to_state.attributes.get('volume_level')
            and trigger.to_state.attributes.get('volume_level') is not none }}
+      bar_volume_automation_context: >-
+        {{ bar_volume_changed
+           and trigger.to_state.context.user_id is none
+           and trigger.to_state.context.parent_id is not none }}
       bar_became_on: >-
         {{ trigger_id == 'bar_change'
            and trigger.from_state is not none
@@ -595,7 +653,9 @@ actions:
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ apply_volume_follow and bar_volume_changed }}"
+            value_template: >-
+              {{ apply_volume_follow and bar_volume_changed
+                 and not bar_volume_automation_context }}
         sequence:
           - variables:
               manual_bar: "{{ trigger_entity }}"
@@ -711,8 +771,10 @@ actions:
         sequence:
           - stop: ULTIMEA state change left untouched.
 
-  # Volume policy. The 5-second clock is used only inside a configured quiet
-  # boundary transition; all other state-driven volume changes are direct.
+  # Volume policy. Quiet-boundary fades retain their fixed five-second stepping.
+  # Direct minimum-volume conditions are intentionally immediate. When automation
+  # returns to a non-urgent target, a guarded handoff advances in fixed five-second
+  # steps and aborts if the actual volume no longer matches the previous step.
   - choose:
       - conditions:
           - condition: template
@@ -724,7 +786,8 @@ actions:
                    or (trigger_id == 'policy_tick'
                        and not before_transition_active
                        and not after_transition_active)
-                   or trigger_id not in ['transition_tick', 'policy_tick']
+                   or trigger_id not in ['transition_tick', 'policy_tick',
+                                         'audio_input_change']
                  ) }}
         sequence:
           - repeat:
@@ -785,21 +848,54 @@ actions:
                       {{ state_attr(bar, 'volume_level') | float(-1) }}
                     previous_transition_target: >-
                       {{ previous_scheduled_volume | float(desired_volume) | round(2) }}
+                    current_volume_automation_context: >-
+                      {% set obj = expand(bar) | first %}
+                      {{ obj is not none
+                         and obj.context.user_id is none
+                         and obj.context.parent_id is not none }}
                     fade_interrupted_by_manual_volume: >-
                       {{ not extra_low
                          and (before_transition_active or after_transition_active)
                          and current_volume >= 0
+                         and not current_volume_automation_context
                          and (current_volume - previous_transition_target) | abs > 0.004 }}
                     fade_can_adjust: >-
                       {{ not (before_transition_active or after_transition_active)
                          or extra_low
                          or not fade_interrupted_by_manual_volume }}
+                    boundary_step_size: >-
+                      {% if before_transition_active and transition_before_seconds > 0 %}
+                        {{ ((max_volume - min_volume) | abs) * 5 / transition_before_seconds }}
+                      {% elif after_transition_active and transition_after_seconds > 0 %}
+                        {{ ((max_volume - min_volume) | abs) * 5 / transition_after_seconds }}
+                      {% else %}
+                        0
+                      {% endif %}
+                    boundary_step_target: >-
+                      {% if (before_transition_active or after_transition_active)
+                            and current_volume >= 0 %}
+                        {% set step = boundary_step_size | float(0) %}
+                        {% if desired_volume > current_volume %}
+                          {{ [desired_volume, current_volume + step] | min }}
+                        {% else %}
+                          {{ [desired_volume, current_volume - step] | max }}
+                        {% endif %}
+                      {% else %}
+                        {{ desired_volume }}
+                      {% endif %}
+                    guarded_handoff_required: >-
+                      {{ not extra_low
+                         and not (before_transition_active or after_transition_active)
+                         and current_volume >= 0
+                         and (current_volume - desired_volume) | abs > 0.009 }}
+                    guarded_handoff_steps: >-
+                      {{ [2, ((handoff_transition_seconds / 5) | round(0, 'ceil') | int) + 1] | max }}
                 - choose:
+                    # Urgent ducking remains immediate by design.
                     - conditions:
                         - condition: template
                           value_template: >-
-                            {{ is_state(bar, 'on')
-                               and fade_can_adjust
+                            {{ is_state(bar, 'on') and extra_low
                                and (current_volume < 0 or (current_volume - desired_volume) | abs > 0.009) }}
                       sequence:
                         - action: media_player.volume_set
@@ -808,6 +904,216 @@ actions:
                             entity_id: "{{ bar }}"
                           data:
                             volume_level: "{{ [[desired_volume, 0.0] | max, 1.0] | min | round(2) }}"
+                    # A quiet-boundary fade may catch up only one normal five-second
+                    # step at a time. A manual mismatch still stops that fade.
+                    - conditions:
+                        - condition: template
+                          value_template: >-
+                            {{ is_state(bar, 'on')
+                               and not extra_low
+                               and (before_transition_active or after_transition_active)
+                               and fade_can_adjust
+                               and (current_volume < 0
+                                    or (current_volume - boundary_step_target) | abs > 0.009) }}
+                      sequence:
+                        - action: media_player.volume_set
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ bar }}"
+                          data:
+                            volume_level: >-
+                              {{ [[boundary_step_target, 0.0] | max, 1.0] | min | round(2) }}
+                    # Outside a scheduled boundary fade, restore automation policy
+                    # gradually. Each next step is allowed only if the preceding
+                    # expected volume is still present.
+                    - conditions:
+                        - condition: template
+                          value_template: >-
+                            {{ is_state(bar, 'on') and guarded_handoff_required }}
+                      sequence:
+                        - variables:
+                            handoff_start_volume: "{{ current_volume | float(0) }}"
+                            handoff_target_volume: "{{ desired_volume | float(0) }}"
+                            handoff_step_delta: >-
+                              {{ (handoff_target_volume - handoff_start_volume)
+                                 / (guarded_handoff_steps | int) }}
+                        - repeat:
+                            count: "{{ guarded_handoff_steps | int }}"
+                            sequence:
+                              - variables:
+                                  handoff_current_volume: >-
+                                    {{ state_attr(bar, 'volume_level') | float(-1) }}
+                                  handoff_expected_before: >-
+                                    {{ handoff_start_volume
+                                       + (handoff_step_delta * (repeat.index - 1)) }}
+                                  handoff_next_volume: >-
+                                    {{ handoff_start_volume
+                                       + (handoff_step_delta * repeat.index) }}
+                                  handoff_binary_low_now: >-
+                                    {% set ns = namespace(active=false) %}
+                                    {% for entity in low_volume_binary_entities %}
+                                      {% set entity_area = area_id(entity) or '' %}
+                                      {% if is_state(entity, 'on')
+                                            and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                                        {% set ns.active = true %}
+                                      {% endif %}
+                                    {% endfor %}
+                                    {{ ns.active }}
+                                  handoff_tts_low_now: >-
+                                    {% set ns = namespace(active=false) %}
+                                    {% for entity in tts_media_players %}
+                                      {% set entity_area = area_id(entity) or '' %}
+                                      {% if states(entity) in ['playing', 'buffering']
+                                            and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                                        {% set ns.active = true %}
+                                      {% endif %}
+                                    {% endfor %}
+                                    {{ ns.active }}
+                                  handoff_voice_low_now: >-
+                                    {% set ns = namespace(active=false) %}
+                                    {% for entity in voice_assistants %}
+                                      {% set entity_area = area_id(entity) or '' %}
+                                      {% if states(entity) not in ['idle', 'unknown', 'unavailable']
+                                            and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                                        {% set ns.active = true %}
+                                      {% endif %}
+                                    {% endfor %}
+                                    {{ ns.active }}
+                                  handoff_night_low_now: >-
+                                    {% set ns = namespace(active=false) %}
+                                    {% for entity in night_mode_entities %}
+                                      {% set entity_area = area_id(entity) or '' %}
+                                      {% if is_state(entity, 'on')
+                                            and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                                        {% set ns.active = true %}
+                                      {% endif %}
+                                    {% endfor %}
+                                    {{ ns.active }}
+                                  handoff_low_now: >-
+                                    {{ handoff_binary_low_now or handoff_tts_low_now
+                                       or handoff_voice_low_now or handoff_night_low_now }}
+                              - choose:
+                                  - conditions:
+                                      - condition: template
+                                        value_template: >-
+                                          {{ not is_state(bar, 'on')
+                                             or handoff_current_volume < 0 }}
+                                    sequence:
+                                      - stop: Guarded ULTIMEA handoff stopped because the soundbar is no longer controllable.
+                                  - conditions:
+                                      - condition: template
+                                        value_template: "{{ handoff_low_now }}"
+                                    sequence:
+                                      - action: media_player.volume_set
+                                        continue_on_error: true
+                                        target:
+                                          entity_id: "{{ bar }}"
+                                        data:
+                                          volume_level: "{{ [[min_volume, 0.0] | max, 1.0] | min | round(2) }}"
+                                      - stop: Guarded ULTIMEA handoff preempted by a minimum-volume condition.
+                                  - conditions:
+                                      - condition: template
+                                        value_template: >-
+                                          {{ (handoff_current_volume - handoff_expected_before) | abs > 0.015 }}
+                                    sequence:
+                                      - stop: Guarded ULTIMEA handoff interrupted by a manual or external volume change.
+                              - action: media_player.volume_set
+                                continue_on_error: true
+                                target:
+                                  entity_id: "{{ bar }}"
+                                data:
+                                  volume_level: >-
+                                    {{ [[handoff_next_volume, 0.0] | max, 1.0] | min | round(2) }}
+                              - if:
+                                  - condition: template
+                                    value_template: "{{ repeat.index < (guarded_handoff_steps | int) }}"
+                                then:
+                                  - delay: "00:00:05"
+
+  # Optional audio-input follow. Selectors are paired strictly by Home Assistant
+  # area. The UI entity picker exposes friendly labels but stores stable entity IDs.
+  # Unassigned selectors and ambiguous same-area matches are deliberately ignored.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ (audio_input_selectors | length > 0)
+                 and (trigger_id in ['startup', 'audio_input_change']
+                      or bar_became_on) }}
+        sequence:
+          - repeat:
+              for_each: "{{ ultimea_players }}"
+              sequence:
+                - variables:
+                    bar: "{{ repeat.item }}"
+                    bar_area: "{{ area_id(repeat.item) or '' }}"
+                    source_trigger_affects_bar: >-
+                      {% if trigger_id == 'startup' %}
+                        true
+                      {% elif trigger_id == 'bar_change' %}
+                        {{ trigger_entity == bar and bar_became_on }}
+                      {% elif trigger_id == 'audio_input_change' %}
+                        {% set trigger_area = area_id(trigger_entity) or '' %}
+                        {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
+                      {% else %}
+                        false
+                      {% endif %}
+                    matching_audio_selectors: >-
+                      {% set ns = namespace(matches=[]) %}
+                      {% set selectors = [audio_input_selectors]
+                         if audio_input_selectors is string else audio_input_selectors %}
+                      {% if bar_area != '' %}
+                        {% for entity in selectors %}
+                          {% if (area_id(entity) or '') == bar_area %}
+                            {% set ns.matches = ns.matches + [entity] %}
+                          {% endif %}
+                        {% endfor %}
+                      {% endif %}
+                      {{ ns.matches }}
+                    audio_selector: >-
+                      {{ matching_audio_selectors[0]
+                         if matching_audio_selectors | length == 1 else '' }}
+                    raw_requested_source: >-
+                      {{ states(audio_selector) | trim if audio_selector else '' }}
+                    requested_source: >-
+                      {% set raw = raw_requested_source | trim %}
+                      {% set key = raw | lower | replace(' ', '') | replace('-', '') | replace('_', '') %}
+                      {% if key in ['earc', 'arc', 'audioreturnchannel', 'enhancedreturnchannel'] %}
+                        eARC
+                      {% elif key in ['hdmi', 'hdmiin'] %}
+                        HDMI
+                      {% elif key in ['optical', 'opt', 'spdif', 'toslink'] %}
+                        Optical
+                      {% elif key in ['aux', 'auxin', 'linein'] %}
+                        AUX
+                      {% elif key in ['bluetooth', 'bt'] %}
+                        Bluetooth
+                      {% elif key in ['usb', 'usbin'] %}
+                        USB
+                      {% elif raw | lower in ['unknown', 'unavailable', 'none', 'no change'] %}
+                        {{ '' }}
+                      {% else %}
+                        {{ raw }}
+                      {% endif %}
+                    current_source: "{{ state_attr(bar, 'source') or '' }}"
+                    supported_sources: "{{ state_attr(bar, 'source_list') | default([], true) }}"
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: >-
+                            {{ is_state(bar, 'on')
+                               and source_trigger_affects_bar
+                               and audio_selector != ''
+                               and requested_source != ''
+                               and requested_source in supported_sources
+                               and current_source != requested_source }}
+                      sequence:
+                        - action: media_player.select_source
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ bar }}"
+                          data:
+                            source: "{{ requested_source }}"
 
   # Optional provider-agnostic content/AI hook. It is intentionally not tied to
   # a specific camera, LLM, vision provider or service contract.
