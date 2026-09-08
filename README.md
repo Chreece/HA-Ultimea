@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.06-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -131,7 +131,25 @@ The repository includes [`ULTIMEA Adaptive Room Audio`](blueprints/automation/ul
 - follow connected-player content into **Movie, Music, Voice, Sport, or Game**, with editable keyword matching and an optional provider-neutral AI/snapshot classification hook;
 - respect manual ULTIMEA volume and sound-mode changes instead of continuously fighting them.
 
-Import it in Home Assistant from:
+The blueprint is bundled with the integration and is automatically installed when
+ULTIMEA loads at:
+
+```text
+/config/blueprints/automation/ultimea/adaptive_room_audio.yaml
+```
+
+No separate import is required for normal use. Existing managed copies are updated
+only while unchanged; a user-modified or otherwise different blueprint is never
+overwritten. A byte-identical manually imported copy can be safely adopted for
+future bundled updates.
+
+HACS itself does not execute custom-integration code at download time. On a new
+installation with no ULTIMEA config entry yet, the blueprint therefore appears as
+soon as ULTIMEA is first loaded (for example after the soundbar is added/discovered).
+Existing configured installations get it on the next Home Assistant start/reload
+after updating the integration.
+
+The public GitHub blueprint remains available as a manual fallback:
 
 ```text
 https://github.com/Chreece/HA-Ultimea/blob/master/blueprints/automation/ultimea/adaptive_room_audio.yaml
