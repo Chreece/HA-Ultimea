@@ -6,15 +6,15 @@ blueprint:
     Assist activity, fade only around the quiet-hours boundaries, select Night
     mode, and follow the content playing on a connected media player.
 
-    Create two input_number helpers for the learned minimum and maximum volume.
-    Helpers may use either a 0–1 range or a 0–100 percentage range. Manual volume
-    changes are learned into the active endpoint instead of being immediately
-    overwritten. For different rooms with different learned levels, create one
-    automation instance per room/group.
+    Minimum and maximum volume can be fixed percentages or read from optional
+    numeric entities. When manual-volume learning is enabled and the selected
+    source is a writable input_number/number entity, a manual volume change in a
+    normal or minimum-volume regime updates that endpoint. Manual changes during
+    a quiet-hours fade stop the fade for that soundbar instead of being learned.
 
-    "Comma-list" entities are optional sensors/text entities whose state contains
-    comma-separated area IDs, area names, or entity IDs. If an item resolves to
-    the same area as a soundbar, that room is treated as a quiet/low-volume room.
+    "Room-list" entities may expose rooms in their state as comma-separated area
+    IDs/names/entity IDs, or in attributes as lists or comma-separated strings.
+    Any token that resolves to the same area as a soundbar requests minimum volume.
     The special values `all` and `*` apply globally.
 
     EQ follow uses media-player state plus common content attributes such as
@@ -41,26 +41,64 @@ blueprint:
               filter:
                 - integration: ultimea
                   domain: media_player
+        min_volume_value:
+          name: Minimum volume
+          description: >-
+            Fixed quiet/TTS/Assist volume in percent. Used when no minimum-volume
+            entity is selected below.
+          default: 20
+          selector:
+            number:
+              min: 0
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
         min_volume_helper:
-          name: Learned minimum volume helper
+          name: Minimum volume entity (optional)
           description: >-
-            input_number used for quiet/TTS/Assist volume. Use either a 0–1 range
-            or a 0–100 percentage range. Manual changes while in a low-volume
-            regime update this helper.
+            Optional numeric entity whose state overrides the fixed minimum above.
+            input_number and number entities can also be updated by manual-volume
+            learning; sensor entities are read-only. Values may use 0–1 or 0–100.
+            Select at most one entity.
+          default: []
           selector:
             entity:
+              multiple: true
               filter:
-                - domain: input_number
+                - domain:
+                    - input_number
+                    - number
+                    - sensor
+        max_volume_value:
+          name: Maximum volume
+          description: >-
+            Fixed normal-operation volume in percent. Used when no maximum-volume
+            entity is selected below.
+          default: 50
+          selector:
+            number:
+              min: 0
+              max: 100
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
         max_volume_helper:
-          name: Learned maximum volume helper
+          name: Maximum volume entity (optional)
           description: >-
-            input_number used for normal volume. Use either a 0–1 range or a
-            0–100 percentage range. Manual changes in normal operation update
-            this helper.
+            Optional numeric entity whose state overrides the fixed maximum above.
+            input_number and number entities can also be updated by manual-volume
+            learning; sensor entities are read-only. Values may use 0–1 or 0–100.
+            Select at most one entity.
+          default: []
           selector:
             entity:
+              multiple: true
               filter:
-                - domain: input_number
+                - domain:
+                    - input_number
+                    - number
+                    - sensor
 
     quiet_hours:
       name: Quiet hours
@@ -123,11 +161,12 @@ blueprint:
                     - binary_sensor
                     - input_boolean
         list_state_entities:
-          name: Comma-list entities
+          name: Room-list entities (state or attributes)
           description: >-
-            Entities whose state is a comma-separated list of active area IDs,
-            area names, or entity IDs. Matching a soundbar's area requests the
-            learned minimum volume. `all` or `*` applies to every selected bar.
+            Entities may provide active rooms in their state as comma-separated
+            area IDs/names/entity IDs, or in attributes as a list or a comma-
+            separated string. Matching a soundbar's area requests minimum volume.
+            `all` or `*` applies to every selected bar.
           default: []
           selector:
             entity:
@@ -266,8 +305,18 @@ blueprint:
       input:
         apply_volume_follow:
           name: Volume follow
-          description: Apply learned min/max volume and quiet-hour fades.
+          description: Apply min/max volume and quiet-hour fades.
           default: true
+          selector:
+            boolean: {}
+        learn_manual_volume_changes:
+          name: Learn min/max from manual volume changes
+          description: >-
+            When enabled, manual soundbar volume changes update the active minimum
+            or maximum only when that endpoint uses a writable input_number/number
+            entity. Manual changes during a quiet-hours fade never change an
+            endpoint; they stop that fade for the affected soundbar.
+          default: false
           selector:
             boolean: {}
         apply_night_mode:
@@ -285,8 +334,10 @@ blueprint:
 
 variables:
   ultimea_players: !input ultimea_players
-  min_volume_helper: !input min_volume_helper
-  max_volume_helper: !input max_volume_helper
+  min_volume_value: !input min_volume_value
+  min_volume_source_input: !input min_volume_helper
+  max_volume_value: !input max_volume_value
+  max_volume_source_input: !input max_volume_helper
   quiet_start_time: !input quiet_start
   quiet_end_time: !input quiet_end
   transition_before_value: !input transition_before
@@ -306,6 +357,7 @@ variables:
   music_keywords: !input music_keywords
   movie_keywords: !input movie_keywords
   apply_volume_follow: !input apply_volume_follow
+  learn_manual_volume_changes: !input learn_manual_volume_changes
   apply_night_mode: !input apply_night_mode
   apply_eq_follow: !input apply_eq_follow
 
@@ -333,10 +385,10 @@ triggers:
     id: bar_change
   - trigger: state
     entity_id: !input min_volume_helper
-    id: volume_helper
+    id: volume_source
   - trigger: state
     entity_id: !input max_volume_helper
-    id: volume_helper
+    id: volume_source
   - trigger: state
     entity_id: !input low_volume_binary_entities
     id: low_binary_change
@@ -382,16 +434,92 @@ actions:
         {{ (transition_after_value.get('hours', 0) | int) * 3600
            + (transition_after_value.get('minutes', 0) | int) * 60
            + (transition_after_value.get('seconds', 0) | int) }}
+      min_volume_entity: >-
+        {% if min_volume_source_input is string %}
+          {{ min_volume_source_input }}
+        {% elif min_volume_source_input | length > 0 %}
+          {{ min_volume_source_input[0] }}
+        {% else %}
+          {{ '' }}
+        {% endif %}
+      max_volume_entity: >-
+        {% if max_volume_source_input is string %}
+          {{ max_volume_source_input }}
+        {% elif max_volume_source_input | length > 0 %}
+          {{ max_volume_source_input[0] }}
+        {% else %}
+          {{ '' }}
+        {% endif %}
       min_volume_candidate: >-
-        {% set v = states(min_volume_helper) | float(0.20) %}
-        {% set scale = state_attr(min_volume_helper, 'max') | float(1) %}
-        {% set normalized = v / 100 if scale > 1.5 else v %}
+        {% if min_volume_entity %}
+          {% set raw = states(min_volume_entity) | float(min_volume_value | float(20)) %}
+          {% set scale = state_attr(min_volume_entity, 'max') | float(0) %}
+          {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+        {% else %}
+          {% set normalized = (min_volume_value | float(20)) / 100 %}
+        {% endif %}
         {{ [[normalized, 0.0] | max, 1.0] | min }}
       max_volume_candidate: >-
-        {% set v = states(max_volume_helper) | float(0.50) %}
-        {% set scale = state_attr(max_volume_helper, 'max') | float(1) %}
-        {% set normalized = v / 100 if scale > 1.5 else v %}
+        {% if max_volume_entity %}
+          {% set raw = states(max_volume_entity) | float(max_volume_value | float(50)) %}
+          {% set scale = state_attr(max_volume_entity, 'max') | float(0) %}
+          {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+        {% else %}
+          {% set normalized = (max_volume_value | float(50)) / 100 %}
+        {% endif %}
         {{ [[normalized, 0.0] | max, 1.0] | min }}
+      room_list_area_ids: >-
+        {% set ns = namespace(area_ids=[]) %}
+        {% for holder in list_state_entities %}
+          {% set obj = expand(holder) | first %}
+          {% if obj is not none %}
+            {% for raw in (obj.state | string).split(',') %}
+              {% set token = raw | trim %}
+              {% if token %}
+                {% if token | lower in ['all', '*'] %}
+                  {% set ns.area_ids = ns.area_ids + ['*'] %}
+                {% else %}
+                  {% set resolved = token if token in areas() else area_id(token) %}
+                  {% if resolved %}
+                    {% set ns.area_ids = ns.area_ids + [resolved] %}
+                  {% endif %}
+                {% endif %}
+              {% endif %}
+            {% endfor %}
+            {% for value in obj.attributes.values() %}
+              {% if value is string and ',' in value %}
+                {% for raw in value.split(',') %}
+                  {% set token = raw | trim %}
+                  {% if token %}
+                    {% if token | lower in ['all', '*'] %}
+                      {% set ns.area_ids = ns.area_ids + ['*'] %}
+                    {% else %}
+                      {% set resolved = token if token in areas() else area_id(token) %}
+                      {% if resolved %}
+                        {% set ns.area_ids = ns.area_ids + [resolved] %}
+                      {% endif %}
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+              {% elif value is iterable and value is not string and value is not mapping %}
+                {% for raw in value %}
+                  {% set token = raw | string | trim %}
+                  {% if token %}
+                    {% if token | lower in ['all', '*'] %}
+                      {% set ns.area_ids = ns.area_ids + ['*'] %}
+                    {% else %}
+                      {% set resolved = token if token in areas() else area_id(token) %}
+                      {% if resolved %}
+                        {% set ns.area_ids = ns.area_ids + [resolved] %}
+                      {% endif %}
+                    {% endif %}
+                  {% endif %}
+                {% endfor %}
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.area_ids | unique | list }}
 
   - variables:
       quiet_hours_enabled: "{{ quiet_start_seconds != quiet_end_seconds }}"
@@ -436,6 +564,16 @@ actions:
           {{ min_volume + ((max_volume - min_volume) * progress) }}
         {% else %}
           {{ max_volume }}
+        {% endif %}
+      previous_scheduled_volume: >-
+        {% if before_transition_active and transition_before_seconds > 0 %}
+          {% set step = ((max_volume - min_volume) * 5 / transition_before_seconds) %}
+          {{ [max_volume, scheduled_volume + step] | min }}
+        {% elif after_transition_active and transition_after_seconds > 0 %}
+          {% set step = ((max_volume - min_volume) * 5 / transition_after_seconds) %}
+          {{ [min_volume, scheduled_volume - step] | max }}
+        {% else %}
+          {{ scheduled_volume }}
         {% endif %}
       bar_volume_changed: >-
         {{ trigger_id == 'bar_change'
@@ -503,23 +641,8 @@ actions:
                 {% endfor %}
                 {{ ns.active }}
               manual_list_low: >-
-                {% set ns = namespace(active=false) %}
-                {% for holder in list_state_entities %}
-                  {% for raw in states(holder).split(',') %}
-                    {% set token = raw | trim %}
-                    {% if token %}
-                      {% if token | lower in ['all', '*'] %}
-                        {% set ns.active = true %}
-                      {% else %}
-                        {% set resolved_area = token if token in areas() else area_id(token) %}
-                        {% if manual_bar_area != '' and resolved_area == manual_bar_area %}
-                          {% set ns.active = true %}
-                        {% endif %}
-                      {% endif %}
-                    {% endif %}
-                  {% endfor %}
-                {% endfor %}
-                {{ ns.active }}
+                {{ '*' in room_list_area_ids
+                   or (manual_bar_area != '' and manual_bar_area in room_list_area_ids) }}
           - variables:
               manual_extra_low: >-
                 {{ manual_binary_low or manual_tts_low or manual_voice_low
@@ -530,31 +653,53 @@ actions:
                 {{ trigger.to_state.attributes.get('volume_level') | float(0) }}
               manual_is_low_regime: >-
                 {{ in_quiet_hours or manual_extra_low }}
+              manual_in_time_transition: >-
+                {{ (before_transition_active or after_transition_active) and not manual_extra_low }}
               manual_differs_from_expected: >-
-                {{ (manual_volume - manual_expected_volume) | abs > 0.004 }}
+                {{ (manual_volume - manual_expected_volume) | abs > 0.004
+                   and (not manual_in_time_transition
+                        or (manual_volume - previous_scheduled_volume) | abs > 0.004) }}
+              manual_learning_entity: >-
+                {{ min_volume_entity if manual_is_low_regime else max_volume_entity }}
+              manual_learning_domain: >-
+                {{ manual_learning_entity.split('.', 1)[0] if manual_learning_entity else '' }}
+              manual_learning_value: >-
+                {% if manual_learning_entity %}
+                  {% set scale = state_attr(manual_learning_entity, 'max') | float(0) %}
+                  {% set current = states(manual_learning_entity) | float(0) %}
+                  {{ (manual_volume * 100 if scale > 1.5 or current > 1.5 else manual_volume) | round(2) }}
+                {% else %}
+                  {{ manual_volume | round(2) }}
+                {% endif %}
           - choose:
               - conditions:
                   - condition: template
-                    value_template: "{{ manual_differs_from_expected and manual_is_low_regime }}"
+                    value_template: >-
+                      {{ manual_differs_from_expected
+                         and not manual_in_time_transition
+                         and learn_manual_volume_changes
+                         and manual_learning_domain == 'input_number' }}
                 sequence:
                   - action: input_number.set_value
+                    continue_on_error: true
                     target:
-                      entity_id: "{{ min_volume_helper }}"
+                      entity_id: "{{ manual_learning_entity }}"
                     data:
-                      value: >-
-                        {% set scale = state_attr(min_volume_helper, 'max') | float(1) %}
-                        {{ (manual_volume * 100 if scale > 1.5 else manual_volume) | round(2) }}
+                      value: "{{ manual_learning_value }}"
               - conditions:
                   - condition: template
-                    value_template: "{{ manual_differs_from_expected and not manual_is_low_regime }}"
+                    value_template: >-
+                      {{ manual_differs_from_expected
+                         and not manual_in_time_transition
+                         and learn_manual_volume_changes
+                         and manual_learning_domain == 'number' }}
                 sequence:
-                  - action: input_number.set_value
+                  - action: number.set_value
+                    continue_on_error: true
                     target:
-                      entity_id: "{{ max_volume_helper }}"
+                      entity_id: "{{ manual_learning_entity }}"
                     data:
-                      value: >-
-                        {% set scale = state_attr(max_volume_helper, 'max') | float(1) %}
-                        {{ (manual_volume * 100 if scale > 1.5 else manual_volume) | round(2) }}
+                      value: "{{ manual_learning_value }}"
           - stop: Manual ULTIMEA volume change handled without fighting the user.
 
   # Ignore unrelated ULTIMEA attribute changes. The one exception is a bar
@@ -573,9 +718,14 @@ actions:
           - condition: template
             value_template: >-
               {{ apply_volume_follow
-                 and (trigger_id != 'transition_tick'
-                      or before_transition_active
-                      or after_transition_active) }}
+                 and (
+                   (trigger_id == 'transition_tick'
+                    and (before_transition_active or after_transition_active))
+                   or (trigger_id == 'policy_tick'
+                       and not before_transition_active
+                       and not after_transition_active)
+                   or trigger_id not in ['transition_tick', 'policy_tick']
+                 ) }}
         sequence:
           - repeat:
               for_each: "{{ ultimea_players }}"
@@ -624,23 +774,8 @@ actions:
                       {% endfor %}
                       {{ ns.active }}
                     list_low: >-
-                      {% set ns = namespace(active=false) %}
-                      {% for holder in list_state_entities %}
-                        {% for raw in states(holder).split(',') %}
-                          {% set token = raw | trim %}
-                          {% if token %}
-                            {% if token | lower in ['all', '*'] %}
-                              {% set ns.active = true %}
-                            {% else %}
-                              {% set resolved_area = token if token in areas() else area_id(token) %}
-                              {% if bar_area != '' and resolved_area == bar_area %}
-                                {% set ns.active = true %}
-                              {% endif %}
-                            {% endif %}
-                          {% endif %}
-                        {% endfor %}
-                      {% endfor %}
-                      {{ ns.active }}
+                      {{ '*' in room_list_area_ids
+                         or (bar_area != '' and bar_area in room_list_area_ids) }}
                 - variables:
                     extra_low: >-
                       {{ binary_low or tts_low or voice_low or night_override_active or list_low }}
@@ -648,14 +783,23 @@ actions:
                       {{ min_volume if extra_low else scheduled_volume }}
                     current_volume: >-
                       {{ state_attr(bar, 'volume_level') | float(-1) }}
-                    tick_can_adjust: >-
-                      {{ trigger_id != 'transition_tick' or not extra_low }}
+                    previous_transition_target: >-
+                      {{ previous_scheduled_volume | float(desired_volume) | round(2) }}
+                    fade_interrupted_by_manual_volume: >-
+                      {{ not extra_low
+                         and (before_transition_active or after_transition_active)
+                         and current_volume >= 0
+                         and (current_volume - previous_transition_target) | abs > 0.004 }}
+                    fade_can_adjust: >-
+                      {{ not (before_transition_active or after_transition_active)
+                         or extra_low
+                         or not fade_interrupted_by_manual_volume }}
                 - choose:
                     - conditions:
                         - condition: template
                           value_template: >-
                             {{ is_state(bar, 'on')
-                               and tick_can_adjust
+                               and fade_can_adjust
                                and (current_volume < 0 or (current_volume - desired_volume) | abs > 0.009) }}
                       sequence:
                         - action: media_player.volume_set

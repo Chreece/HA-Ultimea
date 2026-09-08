@@ -18,27 +18,27 @@ The blueprint has three independent feature switches:
 A soundbar is only written while its Home Assistant media-player entity is `on`.
 Unavailable, unknown and powered-off bars are skipped.
 
-## Learned minimum and maximum volume
+## Minimum and maximum volume
 
-Home Assistant blueprints cannot rewrite their own numeric inputs. To make manual
-volume choices persistent, the blueprint therefore uses two `input_number`
-helpers:
+Each endpoint can be configured as a fixed **0–100%** number and can optionally
+be overridden by a numeric Home Assistant entity. Supported entity domains are
+`input_number`, `number`, and `sensor`. Entity values may be expressed as either
+`0..1` or `0..100`; the blueprint normalizes them automatically.
 
-- one for the learned **minimum** volume;
-- one for the learned **maximum** volume.
+**Learn min/max from manual volume changes** is an explicit option and is disabled
+by default. When enabled:
 
-The helpers can use either `0..1` or `0..100`; the blueprint detects the helper's
-scale from its configured maximum.
+- a manual volume change in a minimum-volume regime updates the selected minimum
+  entity when it is an `input_number` or writable `number`;
+- a manual volume change in normal operation updates the selected maximum entity
+  under the same rule;
+- numeric `sensor` sources and fixed numeric values are read-only and are never
+  mutated;
+- manual changes during a quiet-hours fade do not learn either endpoint. They
+  interrupt that fade instead.
 
-When the soundbar volume changes away from the value calculated by the automation:
-
-- during quiet hours or another low-volume condition, the new value becomes the
-  learned minimum;
-- during normal operation, the new value becomes the learned maximum.
-
-The automation then uses the newly learned value instead of fighting the user's
-choice. Run separate blueprint instances (with separate helpers) when rooms need
-independent learned limits.
+For different rooms with independent dynamic endpoints, create separate blueprint
+instances and use separate numeric entities.
 
 ## Quiet hours (ώρες κοινής ησυχίας)
 
@@ -50,7 +50,7 @@ Quiet hours may cross midnight, for example `22:00` to `07:00`.
   maximum to minimum.
 - **After** quiet hours, the configured transition duration linearly fades from
   minimum to maximum.
-- The fade is stepped every five seconds.
+- The fade is stepped every five seconds. If the user changes the soundbar volume during the fade, the fade stays stopped for that soundbar for the rest of the transition window. A direct minimum-volume condition such as TTS can still override while it is active.
 - TTS, active binary conditions, Assist activity, list-state conditions, and a
   night-mode boolean switch to minimum volume immediately. Those non-time
   transitions are deliberately not faded.
@@ -70,17 +70,19 @@ connected content media players:
 - an entity with **no area** is treated as global;
 - an entity in a different area does not affect that soundbar.
 
-## Comma-list entities
+## Room-list entities: state and attributes
 
-Some installations already maintain sensors whose state is a dynamic comma-separated
-list. The blueprint can consume those directly.
+Some installations already maintain entities that describe which rooms are active.
+The blueprint can consume a selected entity from both its **state** and its
+**attributes**:
 
-Each token may be:
+- the state may be a comma-separated string;
+- an attribute may be a list/tuple-like value;
+- an attribute may be a comma-separated string.
 
-- an area ID, such as `living_room`;
-- an area name, such as `Living Room`;
-- an entity ID whose Home Assistant area identifies the room;
-- `all` or `*` to affect every selected soundbar.
+Each token may be an area ID, area name, or entity ID whose assigned Home Assistant
+area identifies the room. `all` and `*` apply to every selected soundbar. Other
+attributes are ignored unless they are list-like or contain commas.
 
 Example state:
 
@@ -88,7 +90,15 @@ Example state:
 master_bedroom,kids_room
 ```
 
-When the list changes, matching soundbars immediately recalculate their volume.
+Example attribute:
+
+```yaml
+rooms:
+  - master_bedroom
+  - kids_room
+```
+
+When the selected source updates, matching soundbars recalculate their room policy.
 
 ## TTS and Assist ducking
 

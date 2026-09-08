@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08.1-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -124,12 +124,12 @@ The integration uses Home Assistant's shared Bluetooth manager and can use suppo
 
 The repository includes [`ULTIMEA Adaptive Room Audio`](blueprints/automation/ultimea/adaptive_room_audio.yaml), a room-aware automation blueprint that can:
 
-- learn persistent normal and quiet volume endpoints from the user's own volume changes;
+- use fixed numeric min/max volume or optional numeric entity sources, with opt-in learning from manual volume changes;
 - apply quiet hours (ώρες κοινής ησυχίας), including smooth before/after boundary fades;
-- lower volume immediately for selected binary conditions, comma-list room sensors, TTS playback, active Assist satellites, or a night-mode boolean;
+- lower volume immediately for selected binary conditions, room-list state/attribute sources, TTS playback, active Assist satellites, or a night-mode boolean;
 - select **Night** during quiet conditions;
 - follow connected-player content into **Movie, Music, Voice, Sport, or Game**, with editable keyword matching and an optional provider-neutral AI/snapshot classification hook;
-- respect manual ULTIMEA volume and sound-mode changes instead of continuously fighting them.
+- respect manual ULTIMEA volume and sound-mode changes instead of continuously fighting them, including stopping an in-progress quiet-hours fade when the user changes volume.
 
 The blueprint is bundled with the integration and is automatically installed when
 ULTIMEA loads at:

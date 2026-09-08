@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.08.1
+
+### Changed
+
+- Minimum and maximum volume no longer require `input_number` helpers: each endpoint now has a fixed percentage plus an optional numeric entity override (`input_number`, `number`, or numeric `sensor`).
+- Room-list sources now consume comma-separated room tokens from entity state and also inspect attributes that are lists or comma-separated strings.
+- Added an explicit **Learn min/max from manual volume changes** option. Learning is opt-in and writes only to writable `input_number`/`number` endpoint entities; read-only sensors and fixed numeric values are never mutated.
+- Manual volume changes during the configured before/after quiet-hours fade now stop the fade for that soundbar. Transition ticks detect that the current volume no longer matches the previous automation target and leave the user's value alone for the rest of that transition window. Direct minimum-volume conditions can still override the user value while active.
+- The one-minute reconciliation no longer writes volume while a quiet-hours fade is active, so it cannot restart a fade that the user interrupted.
+
 ## 2026.09.08
 
 ### Added
