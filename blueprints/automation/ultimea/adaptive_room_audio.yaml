@@ -22,6 +22,12 @@ blueprint:
     Home Assistant stores the selected entity ID. Exactly one selector must match
     a soundbar area, so unassigned or ambiguous selectors never act globally.
 
+    Optional per-zone normal-volume entities use the same area matching. Exactly
+    one numeric entity in a soundbar's area overrides the global maximum/normal
+    volume for that soundbar. An input_number helper therefore gives that zone its
+    own persistent dashboard slider. No-area or ambiguous matches fall back to the
+    global maximum, and the quiet/minimum endpoint remains global.
+
     Automatic restore/handoff changes use a guarded fixed-step transition. The
     volume advances every five seconds and stops if the user or another control
     changes the soundbar away from the expected intermediate value. Direct
@@ -117,6 +123,25 @@ blueprint:
             input_number and number entities can also be updated by manual-volume
             learning; sensor entities are read-only. Values may use 0–1 or 0–100.
             Select at most one entity.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - input_number
+                    - number
+                    - sensor
+        zone_volume_entities:
+          name: Per-zone normal-volume entities (optional)
+          description: >-
+            Optional numeric entities that override the global maximum/normal
+            volume per soundbar area. Put each entity in the same Home Assistant
+            area as its soundbar. Exactly one entity must match an area; no-area
+            and ambiguous matches fall back to the global maximum above.
+            input_number and number entities can learn manual normal-volume changes;
+            sensor entities are read-only. Values may use 0–1 or 0–100. An
+            input_number helper can be exposed as that zone's dashboard slider.
           default: []
           selector:
             entity:
@@ -384,6 +409,7 @@ variables:
   min_volume_source_input: !input min_volume_helper
   max_volume_value: !input max_volume_value
   max_volume_source_input: !input max_volume_helper
+  zone_volume_entities: !input zone_volume_entities
   quiet_start_time: !input quiet_start
   quiet_end_time: !input quiet_end
   transition_before_value: !input transition_before
@@ -435,6 +461,9 @@ triggers:
     id: volume_source
   - trigger: state
     entity_id: !input max_volume_helper
+    id: volume_source
+  - trigger: state
+    entity_id: !input zone_volume_entities
     id: volume_source
   - trigger: state
     entity_id: !input audio_input_selectors
@@ -704,12 +733,61 @@ actions:
               manual_list_low: >-
                 {{ '*' in room_list_area_ids
                    or (manual_bar_area != '' and manual_bar_area in room_list_area_ids) }}
+              manual_zone_volume_matches: >-
+                {% set ns = namespace(matches=[]) %}
+                {% set candidates = [zone_volume_entities]
+                   if zone_volume_entities is string else zone_volume_entities %}
+                {% if manual_bar_area != '' %}
+                  {% for entity in candidates %}
+                    {% if (area_id(entity) or '') == manual_bar_area %}
+                      {% set ns.matches = ns.matches + [entity] %}
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+                {{ ns.matches }}
+              manual_zone_volume_entity: >-
+                {{ manual_zone_volume_matches[0]
+                   if manual_zone_volume_matches | length == 1 else '' }}
           - variables:
               manual_extra_low: >-
                 {{ manual_binary_low or manual_tts_low or manual_voice_low
                    or manual_night_override or manual_list_low }}
+              manual_zone_max_candidate: >-
+                {% if manual_zone_volume_entity %}
+                  {% set scale = state_attr(manual_zone_volume_entity, 'max') | float(0) %}
+                  {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
+                  {% set raw = states(manual_zone_volume_entity) | float(fallback) %}
+                  {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+                  {{ [[normalized, 0.0] | max, 1.0] | min }}
+                {% else %}
+                  {{ max_volume }}
+                {% endif %}
+              manual_max_volume: >-
+                {{ [min_volume, manual_zone_max_candidate] | max }}
+              manual_scheduled_volume: >-
+                {% if in_quiet_hours %}
+                  {{ min_volume }}
+                {% elif before_transition_active and transition_before_seconds > 0 %}
+                  {% set progress = 1 - (seconds_until_quiet_start / transition_before_seconds) %}
+                  {{ manual_max_volume - ((manual_max_volume - min_volume) * progress) }}
+                {% elif after_transition_active and transition_after_seconds > 0 %}
+                  {% set progress = seconds_since_quiet_end / transition_after_seconds %}
+                  {{ min_volume + ((manual_max_volume - min_volume) * progress) }}
+                {% else %}
+                  {{ manual_max_volume }}
+                {% endif %}
+              manual_previous_scheduled_volume: >-
+                {% if before_transition_active and transition_before_seconds > 0 %}
+                  {% set step = ((manual_max_volume - min_volume) * 5 / transition_before_seconds) %}
+                  {{ [manual_max_volume, manual_scheduled_volume + step] | min }}
+                {% elif after_transition_active and transition_after_seconds > 0 %}
+                  {% set step = ((manual_max_volume - min_volume) * 5 / transition_after_seconds) %}
+                  {{ [min_volume, manual_scheduled_volume - step] | max }}
+                {% else %}
+                  {{ manual_scheduled_volume }}
+                {% endif %}
               manual_expected_volume: >-
-                {{ min_volume if manual_extra_low else scheduled_volume }}
+                {{ min_volume if manual_extra_low else manual_scheduled_volume }}
               manual_volume: >-
                 {{ trigger.to_state.attributes.get('volume_level') | float(0) }}
               manual_is_low_regime: >-
@@ -719,9 +797,10 @@ actions:
               manual_differs_from_expected: >-
                 {{ (manual_volume - manual_expected_volume) | abs > 0.004
                    and (not manual_in_time_transition
-                        or (manual_volume - previous_scheduled_volume) | abs > 0.004) }}
+                        or (manual_volume - manual_previous_scheduled_volume) | abs > 0.004) }}
               manual_learning_entity: >-
-                {{ min_volume_entity if manual_is_low_regime else max_volume_entity }}
+                {{ min_volume_entity if manual_is_low_regime
+                   else (manual_zone_volume_entity if manual_zone_volume_entity else max_volume_entity) }}
               manual_learning_domain: >-
                 {{ manual_learning_entity.split('.', 1)[0] if manual_learning_entity else '' }}
               manual_learning_value: >-
@@ -840,15 +919,64 @@ actions:
                     list_low: >-
                       {{ '*' in room_list_area_ids
                          or (bar_area != '' and bar_area in room_list_area_ids) }}
+                    zone_volume_matches: >-
+                      {% set ns = namespace(matches=[]) %}
+                      {% set candidates = [zone_volume_entities]
+                         if zone_volume_entities is string else zone_volume_entities %}
+                      {% if bar_area != '' %}
+                        {% for entity in candidates %}
+                          {% if (area_id(entity) or '') == bar_area %}
+                            {% set ns.matches = ns.matches + [entity] %}
+                          {% endif %}
+                        {% endfor %}
+                      {% endif %}
+                      {{ ns.matches }}
+                    zone_volume_entity: >-
+                      {{ zone_volume_matches[0]
+                         if zone_volume_matches | length == 1 else '' }}
                 - variables:
                     extra_low: >-
                       {{ binary_low or tts_low or voice_low or night_override_active or list_low }}
+                    zone_max_candidate: >-
+                      {% if zone_volume_entity %}
+                        {% set scale = state_attr(zone_volume_entity, 'max') | float(0) %}
+                        {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
+                        {% set raw = states(zone_volume_entity) | float(fallback) %}
+                        {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+                        {{ [[normalized, 0.0] | max, 1.0] | min }}
+                      {% else %}
+                        {{ max_volume }}
+                      {% endif %}
+                    bar_max_volume: >-
+                      {{ [min_volume, zone_max_candidate] | max }}
+                    bar_scheduled_volume: >-
+                      {% if in_quiet_hours %}
+                        {{ min_volume }}
+                      {% elif before_transition_active and transition_before_seconds > 0 %}
+                        {% set progress = 1 - (seconds_until_quiet_start / transition_before_seconds) %}
+                        {{ bar_max_volume - ((bar_max_volume - min_volume) * progress) }}
+                      {% elif after_transition_active and transition_after_seconds > 0 %}
+                        {% set progress = seconds_since_quiet_end / transition_after_seconds %}
+                        {{ min_volume + ((bar_max_volume - min_volume) * progress) }}
+                      {% else %}
+                        {{ bar_max_volume }}
+                      {% endif %}
+                    bar_previous_scheduled_volume: >-
+                      {% if before_transition_active and transition_before_seconds > 0 %}
+                        {% set step = ((bar_max_volume - min_volume) * 5 / transition_before_seconds) %}
+                        {{ [bar_max_volume, bar_scheduled_volume + step] | min }}
+                      {% elif after_transition_active and transition_after_seconds > 0 %}
+                        {% set step = ((bar_max_volume - min_volume) * 5 / transition_after_seconds) %}
+                        {{ [min_volume, bar_scheduled_volume - step] | max }}
+                      {% else %}
+                        {{ bar_scheduled_volume }}
+                      {% endif %}
                     desired_volume: >-
-                      {{ min_volume if extra_low else scheduled_volume }}
+                      {{ min_volume if extra_low else bar_scheduled_volume }}
                     current_volume: >-
                       {{ state_attr(bar, 'volume_level') | float(-1) }}
                     previous_transition_target: >-
-                      {{ previous_scheduled_volume | float(desired_volume) | round(2) }}
+                      {{ bar_previous_scheduled_volume | float(desired_volume) | round(2) }}
                     boundary_retake_allowed: >-
                       {{ trigger_id in ['startup', 'volume_source',
                                         'low_binary_change', 'list_change',
@@ -873,11 +1001,11 @@ actions:
                       {% if before_transition_active and transition_before_seconds > 0 %}
                         {% set future_until = [0, seconds_until_quiet_start - guarded_handoff_duration] | max %}
                         {% set progress = 1 - (future_until / transition_before_seconds) %}
-                        {{ max_volume - ((max_volume - min_volume) * progress) }}
+                        {{ bar_max_volume - ((bar_max_volume - min_volume) * progress) }}
                       {% elif after_transition_active and transition_after_seconds > 0 %}
                         {% set future_since = [transition_after_seconds, seconds_since_quiet_end + guarded_handoff_duration] | min %}
                         {% set progress = future_since / transition_after_seconds %}
-                        {{ min_volume + ((max_volume - min_volume) * progress) }}
+                        {{ min_volume + ((bar_max_volume - min_volume) * progress) }}
                       {% else %}
                         {{ desired_volume }}
                       {% endif %}

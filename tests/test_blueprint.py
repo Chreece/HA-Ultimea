@@ -81,6 +81,7 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "min_volume_helper",
         "max_volume_value",
         "max_volume_helper",
+        "zone_volume_entities",
         "low_volume_binary_entities",
         "list_state_entities",
         "tts_media_players",
@@ -104,7 +105,7 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     assert inputs["max_volume_value"]["selector"]["number"]["min"] == 0
     assert inputs["max_volume_value"]["selector"]["number"]["max"] == 100
 
-    for key in ("min_volume_helper", "max_volume_helper"):
+    for key in ("min_volume_helper", "max_volume_helper", "zone_volume_entities"):
         selector = inputs[key]["selector"]["entity"]
         assert selector["multiple"] is True
         assert inputs[key]["default"] == []
@@ -157,6 +158,13 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "boundary_guarded_handoff_required" in text
     assert "boundary_handoff_target" in text
     assert "handoff_list_low_now" in text
+    assert "zone_volume_matches" in text
+    assert "zone_volume_entity" in text
+    assert "manual_zone_volume_entity" in text
+    assert "manual_zone_max_candidate" in text
+    assert "bar_max_volume" in text
+    assert "bar_scheduled_volume" in text
+    assert "manual_scheduled_volume" in text
     assert "delay: \"00:00:05\"" in text
     assert "manual_in_time_transition" in text
     assert "area_id(" in text
