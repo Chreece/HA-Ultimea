@@ -1,0 +1,59 @@
+name: Temporary Adaptive Blueprint Runtime Validation
+
+on:
+  push:
+    branches:
+      - feature/adaptive-audio-policy-engine
+    paths:
+      - .github/workflows/_tmp_validate_adaptive_blueprint_runtime.yml
+
+permissions:
+  contents: read
+
+jobs:
+  validate-blueprint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Create Home Assistant validation virtual environment
+        run: python -m venv .venv-ha-blueprint
+      - name: Install Home Assistant
+        run: .venv-ha-blueprint/bin/python -m pip install --upgrade "homeassistant==2026.9.1"
+      - name: Validate blueprint and generated automation with Home Assistant schemas
+        run: |
+          .venv-ha-blueprint/bin/python - <<'PY'
+          from pathlib import Path
+
+          from homeassistant.components.automation import config as automation_config
+          from homeassistant.components.blueprint.models import Blueprint, BlueprintInputs
+          from homeassistant.util import yaml as yaml_util
+
+          path = Path("blueprints/automation/ultimea/adaptive_room_audio.yaml")
+          data = yaml_util.load_yaml_dict(path)
+          blueprint = Blueprint(
+              data,
+              expected_domain="automation",
+              path=str(path),
+              schema=automation_config.AUTOMATION_BLUEPRINT_SCHEMA,
+          )
+          errors = blueprint.validate()
+          assert errors is None, errors
+
+          supplied = {}
+          for name, definition in blueprint.inputs.items():
+              if isinstance(definition, dict) and "default" in definition:
+                  supplied[name] = definition["default"]
+          supplied["ultimea_players"] = ["media_player.ultimea_test"]
+
+          inputs = BlueprintInputs(
+              blueprint,
+              {"use_blueprint": {"path": str(path), "input": supplied}},
+          )
+          inputs.validate()
+          generated = inputs.async_substitute()
+          automation_config.PLATFORM_SCHEMA(generated)
+          print(f"Validated {len(blueprint.inputs)} inputs and generated automation schema")
+          PY
