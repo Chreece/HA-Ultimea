@@ -75,7 +75,9 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "quiet_end",
         "transition_before",
         "transition_after",
+        "min_volume_value",
         "min_volume_helper",
+        "max_volume_value",
         "max_volume_helper",
         "low_volume_binary_entities",
         "list_state_entities",
@@ -86,6 +88,7 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "content_classifier_entities",
         "ai_content_actions",
         "apply_volume_follow",
+        "learn_manual_volume_changes",
         "apply_night_mode",
         "apply_eq_follow",
     }
@@ -94,12 +97,17 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     ultimea_filter = inputs["ultimea_players"]["selector"]["entity"]["filter"]
     assert {"integration": "ultimea", "domain": "media_player"} in ultimea_filter
 
-    assert inputs["min_volume_helper"]["selector"]["entity"]["filter"] == [
-        {"domain": "input_number"}
-    ]
-    assert inputs["max_volume_helper"]["selector"]["entity"]["filter"] == [
-        {"domain": "input_number"}
-    ]
+    assert inputs["min_volume_value"]["selector"]["number"]["min"] == 0
+    assert inputs["min_volume_value"]["selector"]["number"]["max"] == 100
+    assert inputs["max_volume_value"]["selector"]["number"]["min"] == 0
+    assert inputs["max_volume_value"]["selector"]["number"]["max"] == 100
+
+    for key in ("min_volume_helper", "max_volume_helper"):
+        selector = inputs[key]["selector"]["entity"]
+        assert selector["multiple"] is True
+        assert inputs[key]["default"] == []
+        domains = selector["filter"][0]["domain"]
+        assert domains == ["input_number", "number", "sensor"]
 
 
 def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
@@ -117,8 +125,18 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
 
     assert "seconds: \"/5\"" in text
     assert "manual_differs_from_expected" in text
+    assert "learn_manual_volume_changes" in text
+    assert "number.set_value" in text
+    assert "min_volume_value" in text
+    assert "max_volume_value" in text
+    assert "obj.attributes.values()" in text
+    assert "value is iterable" in text
+    assert "value is string and ',' in value" in text
+    assert "room_list_area_ids" in text
+    assert "previous_scheduled_volume" in text
+    assert "fade_interrupted_by_manual_volume" in text
+    assert "manual_in_time_transition" in text
     assert "area_id(" in text
-    assert "states(holder).split(',')" in text
     assert "sound_mode_list" in text
     assert "quiet_hours_enabled" in text
 
