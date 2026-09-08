@@ -233,7 +233,13 @@ Updates are deliberately safe:
   unchanged by the user;
 - an existing byte-identical manual copy is safely adopted and can receive future
   bundled updates;
-- a user-modified or otherwise different existing blueprint is never overwritten.
+- a user-modified or otherwise different existing blueprint is never overwritten;
+- when a managed blueprint is installed or updated after Home Assistant's
+  Automation integration has already loaded, ULTIMEA resets the blueprint cache
+  and reloads the live automation definition after startup. Existing automations
+  using this blueprint are targeted individually when possible, so removed
+  triggers cannot remain active just because Home Assistant expanded an older
+  blueprint earlier in the same startup.
 
 The public GitHub blueprint remains available as a manual fallback:
 
@@ -242,9 +248,7 @@ https://github.com/Chreece/HA-Ultimea/blob/master/blueprints/automation/ultimea/
 ```
 
 After creating the automation, use **Run actions** once if you want the policy to
-be applied immediately rather than waiting for the next relevant event. Volume
-follow also performs a one-minute reconciliation for recovery and initialization.
-
+be applied immediately rather than waiting for the next relevant event.
 
 ## Execution model
 
