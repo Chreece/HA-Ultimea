@@ -1055,7 +1055,7 @@ actions:
                             entity_id: "{{ bar }}"
                           data:
                             volume_level: "{{ [[desired_volume, 0.0] | max, 1.0] | min | round(2) }}"
-                    # Normal scheduled boundary ticks remain fixed-step. A manual
+                    # Normal boundary adjustments remain fixed-step. A manual
                     # mismatch stops the fade unless an explicit policy event is
                     # currently initiating a guarded re-entry below.
                     - conditions:
@@ -1079,7 +1079,7 @@ actions:
                     # A non-urgent restore, or an explicit re-entry into an active
                     # quiet-boundary fade, completes in one guarded sequence. The
                     # boundary target is projected to where the scheduled fade will
-                    # be when the handoff finishes, so subsequent timer ticks resume
+                    # be when the handoff finishes, so the active fade run resumes
                     # on-track without relying on context.parent_id.
                     - conditions:
                         - condition: template
