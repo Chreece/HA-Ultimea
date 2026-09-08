@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08.1-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08.2-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -125,7 +125,8 @@ The integration uses Home Assistant's shared Bluetooth manager and can use suppo
 The repository includes [`ULTIMEA Adaptive Room Audio`](blueprints/automation/ultimea/adaptive_room_audio.yaml), a room-aware automation blueprint that can:
 
 - use fixed numeric min/max volume or optional numeric entity sources, with opt-in learning from manual volume changes;
-- apply quiet hours (ώρες κοινής ησυχίας), including smooth before/after boundary fades;
+- bind an optional `input_select`/`select` audio-input selector to each soundbar by Home Assistant area; the picker is searchable by friendly label and ambiguous/unassigned selectors are ignored;
+- apply quiet hours (ώρες κοινής ησυχίας), including smooth before/after boundary fades and guarded five-second-step handoff/restores;
 - lower volume immediately for selected binary conditions, room-list state/attribute sources, TTS playback, active Assist satellites, or a night-mode boolean;
 - select **Night** during quiet conditions;
 - follow connected-player content into **Movie, Music, Voice, Sport, or Game**, with editable keyword matching and an optional provider-neutral AI/snapshot classification hook;
@@ -155,7 +156,7 @@ The public GitHub blueprint remains available as a manual fallback:
 https://github.com/Chreece/HA-Ultimea/blob/master/blueprints/automation/ultimea/adaptive_room_audio.yaml
 ```
 
-The learned minimum and maximum are stored in two user-selected `input_number` helpers. See [Adaptive Room Audio blueprint documentation](docs/ADAPTIVE_AUDIO_BLUEPRINT.md) for configuration and behavior.
+Minimum/maximum volume can be fixed values or optional numeric entity sources; writable `input_number`/`number` sources can also learn manual changes when enabled. See [Adaptive Room Audio blueprint documentation](docs/ADAPTIVE_AUDIO_BLUEPRINT.md) for configuration and behavior.
 
 ## Installation
 

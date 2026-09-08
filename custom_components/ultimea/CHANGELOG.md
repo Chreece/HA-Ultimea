@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.08.2
+
+### Added
+
+- Added optional area-matched audio-input selector entities. The Home Assistant entity picker can be searched by friendly name/label and accepts both `input_select` and `select`; exactly one same-area selector must match each soundbar, with no unassigned/global fallback.
+- Added a configurable guarded handoff/restore duration. Non-urgent automation retakes are interpolated in fixed five-second steps and stop when the observed volume no longer matches the expected intermediate value.
+
+### Changed
+
+- Quiet-boundary recovery is clamped to the existing five-second fade slope, so returning from an automation-originated duck cannot jump directly to a distant scheduled target.
+- Queued stale intermediate handoff volume events are ignored once the live soundbar volume has advanced, preventing self-generated steps from being learned as manual changes; direct minimum-volume requests such as TTS/Assist remain immediate.
+
 ## 2026.09.08.1
 
 ### Changed
