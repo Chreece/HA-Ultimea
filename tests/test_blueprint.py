@@ -135,6 +135,7 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "room_list_area_ids" in text
     assert "previous_scheduled_volume" in text
     assert "fade_interrupted_by_manual_volume" in text
+    assert "fade_can_adjust" in text
     assert "manual_in_time_transition" in text
     assert "area_id(" in text
     assert "sound_mode_list" in text

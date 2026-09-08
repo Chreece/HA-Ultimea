@@ -786,20 +786,20 @@ actions:
                     previous_transition_target: >-
                       {{ previous_scheduled_volume | float(desired_volume) | round(2) }}
                     fade_interrupted_by_manual_volume: >-
-                      {{ trigger_id == 'transition_tick'
-                         and not extra_low
+                      {{ not extra_low
                          and (before_transition_active or after_transition_active)
                          and current_volume >= 0
                          and (current_volume - previous_transition_target) | abs > 0.004 }}
-                    tick_can_adjust: >-
-                      {{ trigger_id != 'transition_tick'
-                         or (not extra_low and not fade_interrupted_by_manual_volume) }}
+                    fade_can_adjust: >-
+                      {{ not (before_transition_active or after_transition_active)
+                         or extra_low
+                         or not fade_interrupted_by_manual_volume }}
                 - choose:
                     - conditions:
                         - condition: template
                           value_template: >-
                             {{ is_state(bar, 'on')
-                               and tick_can_adjust
+                               and fade_can_adjust
                                and (current_volume < 0 or (current_volume - desired_volume) | abs > 0.009) }}
                       sequence:
                         - action: media_player.volume_set

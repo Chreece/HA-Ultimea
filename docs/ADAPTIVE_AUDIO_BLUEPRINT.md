@@ -50,7 +50,7 @@ Quiet hours may cross midnight, for example `22:00` to `07:00`.
   maximum to minimum.
 - **After** quiet hours, the configured transition duration linearly fades from
   minimum to maximum.
-- The fade is stepped every five seconds. If the user changes the soundbar volume during the fade, subsequent fade ticks for that soundbar stop until the transition window ends or another room condition changes.
+- The fade is stepped every five seconds. If the user changes the soundbar volume during the fade, the fade stays stopped for that soundbar for the rest of the transition window. A direct minimum-volume condition such as TTS can still override while it is active.
 - TTS, active binary conditions, Assist activity, list-state conditions, and a
   night-mode boolean switch to minimum volume immediately. Those non-time
   transitions are deliberately not faded.
