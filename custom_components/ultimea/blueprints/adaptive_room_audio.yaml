@@ -279,6 +279,343 @@ blueprint:
           selector:
             select:
               options:
+                - Volume 0
+                - Mute
+                - Volume 0 and mute
+        unmute_when_zero_clears:
+          name: Unmute when zero/mute clears
+          description: >-
+            Off is safest and never overrides a user's manual mute. Enable only if
+            this automation owns mute state and should unmute on the next non-zero
+            policy evaluation.
+          default: false
+          selector:
+            boolean: {}
+        zero_extra_actions:
+          name: Optional zero/mute actions
+          description: >-
+            Extra actions executed while the zero/mute priority is active. The
+            current `bar` and `bar_area` variables are available to templates.
+          default: []
+          selector:
+            action: {}
+
+    ambient_boost:
+      name: Ambient-noise volume boost
+      icon: mdi:volume-plus
+      collapsed: true
+      input:
+        boost_binary_entities:
+          name: Noisy binary entities
+          description: On entities activate the boost for the same room; no-area entities are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - binary_sensor
+                    - input_boolean
+        boost_room_list_entities:
+          name: Noisy room-scoped room lists
+          description: Room-list sources whose matching room activates the boost.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        boost_global_list_entities:
+          name: Noisy global room lists
+          description: Any valid room token activates the boost for every selected bar.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        boost_ha_conditions:
+          name: Additional noise/boost condition
+          description: Optional rich Home Assistant condition for the current bar.
+          default: []
+          selector:
+            condition: {}
+        boost_condition_template:
+          name: Noise/boost template
+          description: Return true to activate the boost for the current `bar`.
+          default: "{{ false }}"
+          selector:
+            template: {}
+        boost_amount_value:
+          name: Boost amount
+          description: Fixed percentage points added while the boost is active.
+          default: 5
+          selector:
+            number:
+              min: 0
+              max: 50
+              step: 1
+              unit_of_measurement: "%"
+              mode: slider
+        boost_amount_entity:
+          name: Boost amount entity (optional)
+          description: >-
+            Optional input_number/number/sensor overriding the fixed amount.
+            0..1 values are treated as a fraction; 0..100 values as percentage points.
+            Select at most one entity.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - input_number
+                    - number
+                    - sensor
+        boost_apply_when:
+          name: Apply boost in
+          default: Minimum-volume conditions
+          selector:
+            select:
+              options:
+                - Minimum-volume conditions
+                - Normal operation
+                - Minimum and normal
+        boost_cap:
+          name: Boost cap
+          description: Cap boosted volume at the learned maximum or at 100%.
+          default: Maximum endpoint
+          selector:
+            select:
+              options:
+                - Maximum endpoint
+                - 100%
+
+    night_conditions:
+      name: Night-mode conditions
+      icon: mdi:weather-night
+      collapsed: true
+      input:
+        night_mode_entities:
+          name: Night booleans / binary sensors
+          description: On entities request Night for the same area; no-area entities are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - binary_sensor
+                    - input_boolean
+        night_room_list_entities:
+          name: Night room-scoped room lists
+          description: Matching room tokens request Night for that soundbar.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        night_global_list_entities:
+          name: Night global room lists
+          description: Any valid room token requests Night for every selected bar.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        night_ha_conditions:
+          name: Additional Night condition
+          description: Optional rich Home Assistant condition for the current bar.
+          default: []
+          selector:
+            condition: {}
+        night_condition_template:
+          name: Night template
+          description: Return true to request Night for the current `bar`.
+          default: "{{ false }}"
+          selector:
+            template: {}
+        night_conditions_request_minimum:
+          name: Night conditions also request minimum volume
+          description: >-
+            When enabled, Night conditions outside the scheduled quiet hours also
+            request Min immediately, matching the original Night boolean behavior.
+          default: true
+          selector:
+            boolean: {}
+
+    policy_gate:
+      name: Connected-device activity and reevaluation
+      icon: mdi:connection
+      collapsed: true
+      input:
+        connected_activity_mode:
+          name: Volume policy activity gate
+          description: >-
+            Optionally control volume only when a selected connected player for
+            the soundbar is active or actually playing.
+          default: Always manage
+          selector:
+            select:
+              options:
+                - Always manage
+                - Require active connected player
+                - Require playing connected player
+        connected_activity_ha_conditions:
+          name: Additional connected/activity condition
+          description: >-
+            Optional rich Home Assistant condition that must pass in addition to
+            the selected connected-player mode. Empty means no additional gate.
+          default: []
+          selector:
+            condition: {}
+        connected_activity_template:
+          name: Connected/activity template
+          description: >-
+            Template AND-gate for volume policy. Return true to allow management
+            of the current `bar`; `bar_area`, `connected_player_count`,
+            `connected_active_count` and `connected_playing_count` are available.
+          default: "{{ true }}"
+          selector:
+            template: {}
+        inactive_policy_behavior:
+          name: When the connected/activity gate is false
+          default: Leave unchanged
+          selector:
+            select:
+              options:
+                - Leave unchanged
+                - Set volume 0
+        extra_policy_trigger_entities:
+          name: Extra condition/template trigger entities
+          description: >-
+            Select entities referenced by custom conditions/templates when you
+            want immediate reevaluation on state change. Otherwise the one-minute
+            recovery tick will eventually reevaluate volume policy.
+          default: []
+          selector:
+            entity:
+              multiple: true
+
+    content_follow:
+      name: Connected devices and EQ/content follow
+      icon: mdi:movie-open-play
+      collapsed: true
+      input:
+        connected_media_players:
+          name: Connected media players
+          description: >-
+            Select TVs, streamers, consoles or other media_player entities. They
+            drive connected-activity gating and content/EQ classification. Area
+            assignment pairs them to soundbars; no-area entities are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        connected_devices:
+          name: Connected devices (optional)
+          description: >-
+            Rich device selector. Media-player entities belonging to these devices
+            are included automatically for activity/content evaluation.
+          default: []
+          selector:
+            device:
+              multiple: true
+        connected_labels:
+          name: Connected device/entity labels (optional)
+          description: >-
+            Rich label selector. Media-player entities directly carrying these
+            labels, or belonging to labeled devices, are included automatically.
+            This can reproduce policies such as selecting every device labeled TV.
+          default: []
+          selector:
+            label:
+              multiple: true
+        content_classifier_entities:
+          name: Optional content / AI classifier entities
+          description: >-
+            Optional entities whose state or common label attributes contain a
+            content class such as Movie, Music, Voice, Sport or Game. Area
+            assignment is respected; entities without an area are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        ai_content_actions:
+          name: Optional snapshot / AI classification actions
+          description: >-
+            Optional actions run when a directly selected connected media player
+            changes. Use this hook to take a snapshot, call any AI/vision service,
+            and update a selected classifier entity.
+          default: []
+          selector:
+            action: {}
+        eq_follow_ha_conditions:
+          name: Additional EQ-follow condition
+          description: >-
+            Optional rich condition that must pass before automatic EQ selection.
+            Empty means no additional condition.
+          default: []
+          selector:
+            condition: {}
+        eq_follow_template:
+          name: EQ-follow template
+          description: >-
+            Template AND-gate for EQ follow. `bar`, `bar_area`, `content_text` and
+            `eq_candidate` are available.
+          default: "{{ true }}"
+          selector:
+            template: {}
+        eq_fallback_mode:
+          name: EQ fallback when content is unknown
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Game
+        normal_sound_mode:
+          name: Mode to restore after Night when EQ follow is off
+          description: >-
+            Used when Night ends and EQ follow does not select a mode. `No change`
+            leaves the current mode untouched.
+          default: Movie
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Game
+        game_keywords:
+          name: Game keywords
+          default: "game,gaming,playstation,xbox,nintendo,steam,geforce now"
+          selector:
+            text: {}
+        sport_keywords:
+          name: Sport keywords
+          default: "sport,sports,football,soccer,basketball,tennis,formula 1,f1,nfl,nba,uefa"
+          selector:
+            text: {}
+        voice_keywords:
+          name: Voice keywords
+          default: "voice,speech,talk,podcast,audiobook,news"
+          selector:
+            text: {}
+        music_keywords:
+          name: Music keywords
+          default: "music,audio,song,album,spotify,tidal,deezer,music assistant,youtube music"
+          selector:
+            text: {}
+        movie_keywords:
+          name: Movie / TV keywords
+          default: "movie,film,video,tv,episode,series,netflix,prime video,disney,plex,jellyfin,kodi"
+          selector:
+            text: {}
+
+    options:
       name: Features and manual-control behavior
       icon: mdi:tune-variant
       collapsed: false
