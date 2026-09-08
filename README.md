@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08.4-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08.5-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -143,7 +143,9 @@ ULTIMEA loads at:
 No separate import is required for normal use. Existing managed copies are updated
 only while unchanged; a user-modified or otherwise different blueprint is never
 overwritten. A byte-identical manually imported copy can be safely adopted for
-future bundled updates.
+future bundled updates. When a managed blueprint changes after Home Assistant has
+already loaded its Automation integration, ULTIMEA also reloads the live automation
+definition after startup so an older expanded trigger set cannot remain active.
 
 HACS itself does not execute custom-integration code at download time. On a new
 installation with no ULTIMEA config entry yet, the blueprint therefore appears as

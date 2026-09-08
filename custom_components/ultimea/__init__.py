@@ -10,10 +10,11 @@ from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, EVENT_HOMEASSISTANT_STARTED, Platform
 from homeassistant.core import CoreState, Event, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.typing import ConfigType
 
-from .blueprint_installer import install_bundled_blueprints
+from .blueprint_installer import BLUEPRINT_RELATIVE_PATH, install_bundled_blueprints
 from .const import (
     CONF_ABILITY_FLAGS, CONF_CAPABILITIES, CONF_DISCONNECT_DELAY, CONF_FIRMWARE,
     CONF_HEARTBEAT_INTERVAL, CONF_KEEP_CONNECTED, CONF_MODEL, CONF_PROFILE,
@@ -89,6 +90,95 @@ async def _async_post_start_refresh(entry: ConfigEntry, device: UltimeaDevice) -
     _store_runtime_probe(entry, device)
 
 
+async def _async_reload_blueprint_automations(
+    hass: HomeAssistant,
+    *,
+    full_reload: bool,
+) -> None:
+    """Reload live automations after the bundled blueprint changed on disk."""
+    if "automation" not in hass.config.components:
+        return
+    if not hass.services.has_service("automation", "reload"):
+        _LOGGER.warning(
+            "ULTIMEA blueprint changed but automation.reload is unavailable; "
+            "reload automations manually to activate the new blueprint"
+        )
+        return
+
+    automation_ids: list[str] = []
+    automation_entities: list[str] = []
+
+    if not full_reload:
+        # Home Assistant expands blueprint triggers when an automation is loaded.
+        # Resetting the blueprint cache alone does not replace those live triggers,
+        # so reload only automations that actually reference our blueprint.
+        from homeassistant.components.automation import (  # noqa: PLC0415
+            automations_with_blueprint,
+        )
+
+        automation_entities = automations_with_blueprint(hass, BLUEPRINT_RELATIVE_PATH)
+        if not automation_entities:
+            return
+
+        registry = er.async_get(hass)
+        for entity_id in automation_entities:
+            registry_entry = registry.async_get(entity_id)
+            if registry_entry is None or not registry_entry.unique_id:
+                # A YAML automation without a stable ID cannot be targeted by the
+                # 2026.9 automation.reload service. Fall back to one full reload.
+                full_reload = True
+                automation_ids.clear()
+                break
+            automation_ids.append(registry_entry.unique_id)
+
+    try:
+        if full_reload:
+            _LOGGER.info(
+                "Reloading automations after ULTIMEA blueprint installation/update"
+            )
+            await hass.services.async_call("automation", "reload", blocking=True)
+            return
+
+        _LOGGER.info(
+            "Reloading %d automation(s) using updated ULTIMEA blueprint: %s",
+            len(automation_entities),
+            ", ".join(automation_entities),
+        )
+        for automation_id in automation_ids:
+            await hass.services.async_call(
+                "automation",
+                "reload",
+                {"id": automation_id},
+                blocking=True,
+            )
+    except HomeAssistantError:
+        # Blueprint delivery must never prevent the integration from loading.
+        _LOGGER.exception(
+            "Unable to reload automations using the updated ULTIMEA blueprint; "
+            "reload automations manually"
+        )
+
+
+def _schedule_blueprint_automation_reload(
+    hass: HomeAssistant,
+    *,
+    full_reload: bool,
+) -> None:
+    """Reload blueprint users after startup, never in the middle of HA setup."""
+
+    @callback
+    def _schedule(_event: Event | None = None) -> None:
+        hass.async_create_task(
+            _async_reload_blueprint_automations(hass, full_reload=full_reload),
+            "ULTIMEA updated blueprint automation reload",
+        )
+
+    if hass.state is CoreState.running:
+        _schedule()
+    else:
+        hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, _schedule)
+
+
 async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
     """Set up integration-wide resources before config entries are loaded."""
     try:
@@ -112,15 +202,21 @@ async def async_setup(hass: HomeAssistant, _config: ConfigType) -> bool:
             ", ".join(result.preserved),
         )
 
-    # If Automation is already loaded, discard its blueprint cache so a newly
-    # installed or safely updated file is visible immediately in the UI. If it
-    # is not loaded yet, its normal startup scan will find the file.
+    # If Automation already loaded before ULTIMEA replaced the blueprint file,
+    # its existing automation entities still contain the old expanded triggers.
+    # Reset the blueprint cache and reload those live automations after startup.
+    # A newly installed blueprint needs a full reload because an automation that
+    # previously failed on a missing blueprint cannot be discovered by reference.
     if result.changed and "automation" in hass.config.components:
         from homeassistant.components.automation.helpers import (  # noqa: PLC0415
             async_get_blueprints,
         )
 
         await async_get_blueprints(hass).async_reset_cache()
+        _schedule_blueprint_automation_reload(
+            hass,
+            full_reload=bool(result.installed),
+        )
 
     return True
 
