@@ -1,0 +1,112 @@
+name: ULTIMEA safe per-zone volume driver
+
+on:
+  push:
+    branches:
+      - dev/adaptive-zone-volume-20260908
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-push:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev/adaptive-zone-volume-20260908
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Run corrected source-only builder logic
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          import subprocess
+
+          manifest = json.loads(Path('custom_components/ultimea/manifest.json').read_text(encoding='utf-8'))
+          if manifest['version'] == '2026.09.08.3':
+              print('2026.09.08.3 already applied')
+              raise SystemExit(0)
+          assert manifest['version'] == '2026.09.08.2', manifest['version']
+
+          workflow = Path('.github/workflows/_ultimea_zone_volume_patch.yml').read_text(encoding='utf-8')
+          start_marker = "      - name: Add optional per-zone normal volume\n        run: |\n"
+          end_marker = "      - name: Test per-zone volume tree\n"
+          assert workflow.count(start_marker) == 1
+          body = workflow.split(start_marker, 1)[1].split(end_marker, 1)[0]
+          lines = body.splitlines()
+          assert all((not line) or line.startswith('          ') for line in lines)
+          script = '\n'.join(line[10:] if line else '' for line in lines) + '\n'
+
+          old_anchor = "'## Minimum and maximum volume\\n\\nMinimum and maximum can each come from either:\\n'"
+          new_anchor = "'## Minimum and maximum volume\\n\\nEach endpoint can be configured as a fixed **0–100%** number and can optionally\\nbe overridden by a numeric Home Assistant entity. Supported entity domains are\\n`input_number`, `number`, and `sensor`. Entity values may be expressed as either\\n`0..1` or `0..100`; the blueprint normalizes them automatically.\\n'"
+          assert script.count(old_anchor) == 1
+          script = script.replace(old_anchor, new_anchor, 1)
+
+          old_tail = "Minimum and global-fallback maximum can each come from either:\\n'''"
+          new_tail = "The shared minimum and global-fallback maximum keep the existing fixed numeric\\nvalue plus optional numeric-entity override behavior. Supported domains are\\n`input_number`, `number`, and `sensor`, with automatic normalization of 0–1 and\\n0–100 values.\\n'''"
+          assert script.count(old_tail) == 1
+          script = script.replace(old_tail, new_tail, 1)
+
+          Path('/tmp/ultimea-zone-volume-apply.sh').write_text(script, encoding='utf-8')
+          subprocess.run(['bash', '/tmp/ultimea-zone-volume-apply.sh'], check=True)
+          PY
+      - name: Correct current handoff documentation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('docs/ADAPTIVE_AUDIO_BLUEPRINT.md')
+          text = path.read_text(encoding='utf-8')
+          text = text.replace(
+              '- If an automation-originated duck ends while a quiet-boundary fade is already active, recovery is limited to one normal boundary-fade step at a time rather than jumping directly to the current scheduled point.',
+              '- If an automation-originated duck ends while a quiet-boundary fade is active, the guarded handoff projects to the point the scheduled fade will reach when the handoff completes; normal fixed five-second boundary ticks resume from there.',
+          )
+          text = text.replace(
+              'For different rooms with independent dynamic endpoints, create separate blueprint\ninstances and use separate numeric entities.\n',
+              'For fully separate quiet/minimum endpoints or different schedules, create separate\nblueprint instances. Per-zone normal volume no longer requires separate instances.\n',
+          )
+          path.write_text(text, encoding='utf-8')
+          PY
+      - name: Test generated source tree
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pytest pyyaml jinja2
+          .venv/bin/python -m compileall -q custom_components/ultimea
+          .venv/bin/python -m pytest -q tests
+          .venv/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in Path('custom_components').rglob('*.json'):
+              json.loads(path.read_text(encoding='utf-8'))
+          public = Path('blueprints/automation/ultimea/adaptive_room_audio.yaml').read_bytes()
+          bundled = Path('custom_components/ultimea/blueprints/adaptive_room_audio.yaml').read_bytes()
+          assert public == bundled
+          text = public.decode('utf-8')
+          global_schedule = text.split('scheduled_volume: >-', 1)[1].split('previous_scheduled_volume:', 1)[0]
+          assert 'max_volume' in global_schedule and 'bar_max_volume' not in global_schedule
+          boundary = text.split('boundary_handoff_target: >-', 1)[1].split('boundary_guarded_handoff_required:', 1)[0]
+          assert 'bar_max_volume' in boundary
+          assert 'zone_volume_entities:' in text
+          manifest = json.loads(Path('custom_components/ultimea/manifest.json').read_text(encoding='utf-8'))
+          assert manifest['version'] == '2026.09.08.3'
+          PY
+      - name: Commit only source docs and tests
+        run: |
+          git config user.name "Chris Chreece"
+          git config user.email "68458228+Chreece@users.noreply.github.com"
+          git add CHANGELOG.md README.md RELEASE_NOTES_2026.09.08.3.md \
+            blueprints/automation/ultimea/adaptive_room_audio.yaml \
+            custom_components/ultimea/CHANGELOG.md \
+            custom_components/ultimea/RELEASE_NOTES_2026.09.08.3.md \
+            custom_components/ultimea/blueprints/adaptive_room_audio.yaml \
+            custom_components/ultimea/manifest.json \
+            docs/ADAPTIVE_AUDIO_BLUEPRINT.md tests/test_blueprint.py
+          if git diff --cached --quiet; then
+            echo "No source changes to commit"
+            exit 0
+          fi
+          git commit -m "Add optional per-zone normal volume"
+          git push origin HEAD:dev/adaptive-zone-volume-20260908
