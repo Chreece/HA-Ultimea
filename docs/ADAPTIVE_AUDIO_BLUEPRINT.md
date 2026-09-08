@@ -160,9 +160,31 @@ provides a provider-neutral hook instead of hard-coding one vendor.
 This keeps the core blueprint local and integration-agnostic while still allowing
 AI-assisted recognition where the user's Home Assistant installation supports it.
 
-## Import
+## Automatic installation
 
-Use Home Assistant's blueprint import UI with:
+The blueprint is bundled inside the ULTIMEA custom integration. When the ULTIMEA
+integration loads, it automatically installs the blueprint at:
+
+```text
+/config/blueprints/automation/ultimea/adaptive_room_audio.yaml
+```
+
+No separate blueprint import is required for normal HACS/manual integration
+installations once ULTIMEA has loaded. HACS itself does not execute integration
+code at download time, so on a brand-new installation with no ULTIMEA config entry
+the blueprint appears when the integration is first loaded (for example when a
+soundbar is added/discovered). Existing configured installations get it on the
+next Home Assistant start/reload after updating ULTIMEA.
+
+Updates are deliberately safe:
+
+- a blueprint created by ULTIMEA is automatically updated while it remains
+  unchanged by the user;
+- an existing byte-identical manual copy is safely adopted and can receive future
+  bundled updates;
+- a user-modified or otherwise different existing blueprint is never overwritten.
+
+The public GitHub blueprint remains available as a manual fallback:
 
 ```text
 https://github.com/Chreece/HA-Ultimea/blob/master/blueprints/automation/ultimea/adaptive_room_audio.yaml
