@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08.1-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.09.08.2-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">

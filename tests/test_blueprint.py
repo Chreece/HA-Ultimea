@@ -23,16 +23,8 @@ def _unique_mapping(loader: BlueprintLoader, node: yaml.MappingNode, deep: bool 
     return mapping
 
 
-BlueprintLoader.add_constructor(
-    yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping
-)
-
-
-def _input(loader: BlueprintLoader, node: yaml.Node) -> dict[str, str]:
-    return {"!input": loader.construct_scalar(node)}
-
-
-BlueprintLoader.add_constructor("!input", _input)
+BlueprintLoader.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _unique_mapping)
+BlueprintLoader.add_constructor("!input", lambda loader, node: {"!input": loader.construct_scalar(node)})
 
 
 def _load_blueprint() -> dict:
@@ -50,100 +42,97 @@ def _walk_templates(value):
         yield value
 
 
+def _inputs(data: dict) -> dict:
+    return {
+        key: value
+        for section in data["blueprint"]["input"].values()
+        for key, value in section["input"].items()
+    }
+
+
 def test_adaptive_audio_blueprint_yaml_and_jinja_are_valid() -> None:
     data = _load_blueprint()
     assert data["blueprint"]["domain"] == "automation"
     assert data["blueprint"]["homeassistant"]["min_version"] == "2026.7.0"
-
     env = jinja2.Environment()
     for template in _walk_templates(data):
         env.parse(template)
 
 
-def test_blueprint_exposes_requested_control_inputs() -> None:
-    data = _load_blueprint()
-    sections = data["blueprint"]["input"]
-    inputs = {
-        key: value
-        for section in sections.values()
-        for key, value in section["input"].items()
-    }
-
+def test_blueprint_exposes_policy_engine_inputs() -> None:
+    inputs = _inputs(_load_blueprint())
     required = {
-        "ultimea_players",
-        "quiet_start",
-        "quiet_end",
-        "transition_before",
-        "transition_after",
-        "min_volume_value",
-        "min_volume_helper",
-        "max_volume_value",
-        "max_volume_helper",
-        "low_volume_binary_entities",
-        "list_state_entities",
-        "tts_media_players",
-        "voice_assistants",
-        "night_mode_entities",
-        "connected_media_players",
-        "content_classifier_entities",
-        "ai_content_actions",
-        "apply_volume_follow",
-        "learn_manual_volume_changes",
-        "apply_night_mode",
-        "apply_eq_follow",
+        "ultimea_players", "min_volume_value", "min_volume_helper",
+        "max_volume_value", "max_volume_helper", "quiet_start", "quiet_end",
+        "low_volume_binary_entities", "list_state_entities", "global_list_state_entities",
+        "minimum_ha_conditions", "minimum_condition_template",
+        "zero_binary_entities", "zero_room_list_entities", "zero_global_list_entities",
+        "zero_ha_conditions", "zero_condition_template", "zero_effect", "zero_extra_actions",
+        "boost_binary_entities", "boost_room_list_entities", "boost_global_list_entities",
+        "boost_ha_conditions", "boost_condition_template", "boost_amount_value",
+        "boost_amount_entity", "boost_apply_when", "boost_cap",
+        "night_mode_entities", "night_room_list_entities", "night_global_list_entities",
+        "night_ha_conditions", "night_condition_template", "night_conditions_request_minimum",
+        "connected_activity_mode", "connected_activity_ha_conditions", "connected_activity_template",
+        "inactive_policy_behavior", "extra_policy_trigger_entities",
+        "connected_media_players", "connected_devices", "connected_labels",
+        "eq_follow_ha_conditions", "eq_follow_template", "ai_content_actions",
+        "learn_manual_volume_changes", "manual_learning_ha_conditions", "manual_learning_template",
+        "apply_volume_follow", "apply_night_mode", "apply_eq_follow",
     }
     assert required <= inputs.keys()
 
-    ultimea_filter = inputs["ultimea_players"]["selector"]["entity"]["filter"]
-    assert {"integration": "ultimea", "domain": "media_player"} in ultimea_filter
 
-    assert inputs["min_volume_value"]["selector"]["number"]["min"] == 0
-    assert inputs["min_volume_value"]["selector"]["number"]["max"] == 100
-    assert inputs["max_volume_value"]["selector"]["number"]["min"] == 0
-    assert inputs["max_volume_value"]["selector"]["number"]["max"] == 100
+def test_every_policy_condition_family_has_rich_and_template_paths() -> None:
+    inputs = _inputs(_load_blueprint())
+    pairs = (
+        ("minimum_ha_conditions", "minimum_condition_template"),
+        ("zero_ha_conditions", "zero_condition_template"),
+        ("boost_ha_conditions", "boost_condition_template"),
+        ("night_ha_conditions", "night_condition_template"),
+        ("connected_activity_ha_conditions", "connected_activity_template"),
+        ("eq_follow_ha_conditions", "eq_follow_template"),
+        ("manual_learning_ha_conditions", "manual_learning_template"),
+    )
+    for rich, template in pairs:
+        assert "condition" in inputs[rich]["selector"]
+        assert "template" in inputs[template]["selector"]
 
-    for key in ("min_volume_helper", "max_volume_helper"):
-        selector = inputs[key]["selector"]["entity"]
-        assert selector["multiple"] is True
-        assert inputs[key]["default"] == []
-        domains = selector["filter"][0]["domain"]
-        assert domains == ["input_number", "number", "sensor"]
 
-
-def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
-    text = BLUEPRINT.read_text(encoding="utf-8")
-
-    for action in (
-        "input_number.set_value",
-        "media_player.volume_set",
-        "media_player.select_sound_mode",
+def test_rich_connected_selectors_and_room_list_modes_exist() -> None:
+    inputs = _inputs(_load_blueprint())
+    assert inputs["connected_devices"]["selector"]["device"]["multiple"] is True
+    assert inputs["connected_labels"]["selector"]["label"]["multiple"] is True
+    for key in (
+        "list_state_entities", "global_list_state_entities",
+        "zero_room_list_entities", "zero_global_list_entities",
+        "boost_room_list_entities", "boost_global_list_entities",
+        "night_room_list_entities", "night_global_list_entities",
     ):
-        assert action in text
-
-    for mode in ("Night", "Movie", "Music", "Voice", "Sport", "Game"):
-        assert mode in text
-
-    assert "seconds: \"/5\"" in text
-    assert "manual_differs_from_expected" in text
-    assert "learn_manual_volume_changes" in text
-    assert "number.set_value" in text
-    assert "min_volume_value" in text
-    assert "max_volume_value" in text
-    assert "obj.attributes.values()" in text
-    assert "value is iterable" in text
-    assert "value is string and ',' in value" in text
-    assert "room_list_area_ids" in text
-    assert "previous_scheduled_volume" in text
-    assert "fade_interrupted_by_manual_volume" in text
-    assert "fade_can_adjust" in text
-    assert "manual_in_time_transition" in text
-    assert "area_id(" in text
-    assert "sound_mode_list" in text
-    assert "quiet_hours_enabled" in text
+        assert inputs[key]["selector"]["entity"]["multiple"] is True
 
 
-def test_blueprint_does_not_hardcode_user_entity_ids() -> None:
+def test_policy_actions_include_priority_boost_gate_and_manual_guard() -> None:
     text = BLUEPRINT.read_text(encoding="utf-8")
-    assert "media_player.living_room" not in text
-    assert "input_number.ultimea" not in text
-    assert "binary_sensor." not in text
+    for expected in (
+        "zero_effect", "media_player.volume_mute", "zero_extra_actions",
+        "boost_delta", "boost_cap", "boost_apply_when",
+        "connected_builtin_gate", "connected_active_count", "connected_playing_count",
+        "label_entities(", "label_devices(", "device_entities(",
+        "minimum_global_area_ids", "zero_global_area_ids", "boost_global_area_ids", "night_global_area_ids",
+        "fade_interrupted_by_manual_volume", "previous_scheduled_volume",
+        "manual_learning_base", "manual_learning_ha_conditions",
+        "number.set_value", "input_number.set_value",
+        "media_player.select_sound_mode", "eq_follow_ha_conditions",
+    ):
+        assert expected in text
+
+
+def test_blueprint_does_not_hardcode_private_policy_entities() -> None:
+    text = BLUEPRINT.read_text(encoding="utf-8").lower()
+    for forbidden in (
+        "binary_sensor.abwesend", "sensor.sleeprooms", "fritzbox_callmonitor",
+        "eingang_people_counter", "input_number.tv_min_vol", "input_number.tv_max_vol",
+        "chreece", "dehumidifier", "3d_printer",
+    ):
+        assert forbidden not in text

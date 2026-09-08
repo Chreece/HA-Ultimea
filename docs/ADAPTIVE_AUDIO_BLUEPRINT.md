@@ -1,205 +1,95 @@
 # ULTIMEA Adaptive Room Audio blueprint
 
-`adaptive_room_audio.yaml` is a room-aware Home Assistant automation blueprint for
-ULTIMEA soundbars. It is designed to cooperate with manual control instead of
-continuously forcing one fixed configuration.
+`adaptive_room_audio.yaml` is a room-aware Home Assistant automation blueprint for ULTIMEA soundbars. It combines quiet-hour fading with priority policies, rich conditions, room lists, connected-device activity, manual-control protection, Night mode and EQ/content follow.
 
-## What it controls
+## Policy priority
 
-The blueprint has three independent feature switches:
+Volume policy is evaluated per soundbar in this order:
 
-- **Volume follow** — normal/quiet learned volume, direct ducking for room events,
-  and smooth quiet-hours boundary fades.
-- **Night mode** — selects ULTIMEA **Night** during quiet hours or while a selected
-  night-mode boolean/binary sensor is on.
-- **EQ follow** — selects **Movie, Music, Voice, Sport, or Game** from the content
-  of media players associated with the soundbar's room.
+1. **Zero / mute priority** — direct, highest priority.
+2. **Minimum-volume policy** — quiet hours, TTS, Assist, binary/list/custom conditions and optionally Night conditions.
+3. **Scheduled / normal volume** — Max in ordinary operation, with the configured linear fade only immediately before/after quiet hours.
+4. **Ambient-noise boost** can modify steady Min and/or steady Max. It deliberately does not modify the time fade.
 
-A soundbar is only written while its Home Assistant media-player entity is `on`.
-Unavailable, unknown and powered-off bars are skipped.
+Unavailable/off soundbars are skipped. A connected/activity gate can additionally leave a bar untouched when its connected source is inactive.
 
-## Minimum and maximum volume
+## Rich conditions + templates
 
-Each endpoint can be configured as a fixed **0–100%** number and can optionally
-be overridden by a numeric Home Assistant entity. Supported entity domains are
-`input_number`, `number`, and `sensor`. Entity values may be expressed as either
-`0..1` or `0..100`; the blueprint normalizes them automatically.
+Every major condition family provides both:
 
-**Learn min/max from manual volume changes** is an explicit option and is disabled
-by default. When enabled:
+- Home Assistant's native **Condition** selector, which supports nested AND/OR, entity/device state, numeric state, time, zone and template conditions; and
+- a dedicated **Template** selector for direct Jinja expressions.
 
-- a manual volume change in a minimum-volume regime updates the selected minimum
-  entity when it is an `input_number` or writable `number`;
-- a manual volume change in normal operation updates the selected maximum entity
-  under the same rule;
-- numeric `sensor` sources and fixed numeric values are read-only and are never
-  mutated;
-- manual changes during a quiet-hours fade do not learn either endpoint. They
-  interrupt that fade instead.
+The condition list is optional. When it is non-empty, all conditions inside that list must pass for that custom source to activate. A group's template is an additional alternative (for activation groups) or AND-gate (for gating groups), as described in the blueprint UI.
 
-For different rooms with independent dynamic endpoints, create separate blueprint
-instances and use separate numeric entities.
+Per-bar templates can use `bar`, `bar_area`, `in_quiet_hours`, `min_volume`, `max_volume`, `trigger_id` and group-specific variables documented in each input. Select **Extra condition/template trigger entities** for any arbitrary entities referenced by templates/conditions when immediate reevaluation is needed; otherwise volume policy has a one-minute recovery tick.
 
-## Quiet hours (ώρες κοινής ησυχίας)
+## Minimum / maximum endpoints
 
-Quiet hours may cross midnight, for example `22:00` to `07:00`.
+Min and Max may be fixed 0–100% values or overridden by optional `input_number`, `number`, or numeric `sensor` entities. Entity values may use 0..1 or 0..100 and are normalized.
 
-- Normal operation targets the learned maximum.
-- Quiet hours target the learned minimum.
-- **Before** quiet hours, the configured transition duration linearly fades from
-  maximum to minimum.
-- **After** quiet hours, the configured transition duration linearly fades from
-  minimum to maximum.
-- The fade is stepped every five seconds. If the user changes the soundbar volume during the fade, the fade stays stopped for that soundbar for the rest of the transition window. A direct minimum-volume condition such as TTS can still override while it is active.
-- TTS, active binary conditions, Assist activity, list-state conditions, and a
-  night-mode boolean switch to minimum volume immediately. Those non-time
-  transitions are deliberately not faded.
+Manual learning is opt-in. With a writable `input_number`/`number` endpoint, a manual change in steady Min learns Min and a manual change in normal operation learns Max. Read-only sensors and fixed blueprint numbers are never mutated. A separate rich condition + template can restrict when learning is allowed.
 
-If quiet start and quiet end are identical, quiet hours and their boundary fades
-are disabled.
+When an ambient boost is active, learning subtracts the boost first so a 15% manually selected boosted volume with a +5% modifier learns a 10% base, not 15%.
 
-## Room matching
+## Quiet hours and manual fade interruption
 
-Area assignment is important. The blueprint compares each ULTIMEA media player
-with the selected condition/content entities using Home Assistant areas.
+Quiet hours may cross midnight. Before quiet start the volume moves linearly Max→Min; after quiet end it moves Min→Max in five-second steps. Other policy changes are direct.
 
-For binary sensors, input booleans, TTS media players, Assist satellites and
-connected content media players:
+A manual volume change during either time fade is not learned. Transition ticks compare the current soundbar volume with the previous automation target; once the user moves away from the fade trajectory the automation leaves that value alone for the remainder of that uninterrupted fade window.
 
-- an entity in the **same area** affects that soundbar;
-- an entity with **no area** is treated as global;
-- an entity in a different area does not affect that soundbar.
+## Room-list sources
 
-## Room-list entities: state and attributes
+Minimum, zero/mute, boost and Night policies each have both **room-scoped** and **global** room-list selectors.
 
-Some installations already maintain entities that describe which rooms are active.
-The blueprint can consume a selected entity from both its **state** and its
-**attributes**:
+A selected entity may provide tokens through:
 
-- the state may be a comma-separated string;
-- an attribute may be a list/tuple-like value;
-- an attribute may be a comma-separated string.
+- its state (`living_room,kids_room`);
+- a list/tuple-like attribute; or
+- a comma-separated string attribute.
 
-Each token may be an area ID, area name, or entity ID whose assigned Home Assistant
-area identifies the room. `all` and `*` apply to every selected soundbar. Other
-attributes are ignored unless they are list-like or contain commas.
+Tokens may be area IDs, area names, entity IDs, `all`, or `*`. Room-scoped sources affect only matching soundbars. A global source affects every selected soundbar as soon as it contains any valid room token. This supports policies such as "any sleeping room lowers every bar" without hardcoded entities.
 
-Example state:
+## Zero / mute priority
 
-```text
-master_bedroom,kids_room
-```
+Zero/mute conditions can be selected from binary entities, room lists, rich HA conditions, or templates. The effect selector supports **Volume 0**, **Mute**, or **Volume 0 and mute**. Optional custom actions can run with `bar` and `bar_area` available.
 
-Example attribute:
+Automatic unmute is disabled by default because blindly unmuting could override a user's manual mute. Enable it only when the automation is intended to own mute state.
 
-```yaml
-rooms:
-  - master_bedroom
-  - kids_room
-```
+## Ambient-noise compensation
 
-When the selected source updates, matching soundbars recalculate their room policy.
+Noise conditions can come from binary entities, room lists, the rich condition editor, or a template. The boost is a fixed percentage-point value or an optional numeric entity. It can apply to Min, Max, or both steady regimes and can be capped at Max or 100%.
 
-## TTS and Assist ducking
+This can model dehumidifiers, fans, 3D printers or any other noisy device without embedding model-specific logic in the blueprint.
 
-Selected TTS/announcement media players request minimum volume while they are
-`playing` or `buffering`.
+## Connected activity: entities, devices and labels
 
-Selected `assist_satellite` entities request minimum volume whenever their state
-is not `idle` (for example listening, processing, or responding).
+Connected content can be selected three ways:
 
-## Night mode behavior
+- direct `media_player` entities;
+- Home Assistant **device** selector; or
+- Home Assistant **label** selector.
 
-Night mode is requested when either:
+For selected devices, their media-player entities are included automatically. For labels, directly labeled media-player entities and media players belonging to labeled devices are included. This allows a generic "TV" label policy without hardcoding entity IDs.
 
-- the current time is inside quiet hours; or
-- a selected night-mode `input_boolean`/`binary_sensor` is on for the room.
+The activity gate can be disabled, require any matching connected player to be active, or require one to be playing/buffering/on. A rich condition and template can further gate volume management. When the gate fails, the user can choose **Leave unchanged** or **Set volume 0**.
 
-Night mode is event-driven rather than continuously forced. If the user manually
-changes the ULTIMEA sound mode after the automation has applied Night, the
-blueprint does not immediately change it back. It waits until the room/night
-context changes again.
+## TTS and Assist
 
-When Night ends:
+Selected TTS media players request Min while playing/buffering. Selected Assist Satellites request Min whenever they are not idle/unknown/unavailable. Same-area matching is used; entities without an area are global.
 
-- with EQ follow enabled, the current connected content is classified and the
-  matching mode is selected;
-- otherwise the configured normal sound mode is restored (or left unchanged if
-  **No change** is selected).
+## Night mode
+
+Night is requested by scheduled quiet hours plus optional Night binary entities, room/global room lists, rich conditions and templates. A toggle decides whether non-time Night conditions should also request Min.
+
+Night/EQ changes remain event-driven rather than being enforced every minute, preserving manual sound-mode choices until relevant context changes.
 
 ## EQ/content follow
 
-Select the media players physically/logically connected to the soundbar, such as a
-TV, Android TV box, game console bridge, Kodi/Plex/Jellyfin player, or Music
-Assistant player. The blueprint combines their state with common metadata:
+Connected media state plus metadata (`app_name`, title, artist, content type, channel, playlist, source, etc.) and optional classifier entities are matched against editable Game/Sport/Voice/Music/Movie keywords. A rich condition and template can gate EQ follow. Only sound modes present in the ULTIMEA entity's `sound_mode_list` are sent.
 
-- `app_name`
-- `media_title`
-- `media_series_title`
-- `media_album_name`
-- `media_artist`
-- `media_content_type`
-- `media_channel`
-- `media_playlist`
-- `source`
-
-The text is compared with editable keyword lists for **Game, Sport, Voice, Music,
-and Movie** (in that priority order). Only modes reported in the ULTIMEA entity's
-`sound_mode_list` are sent.
-
-Like Night mode, EQ follow is event-driven. A manual sound-mode change is not
-periodically overwritten; a new connected-content/classifier event is needed
-before automatic EQ selection happens again.
-
-## Optional AI / snapshot classification
-
-There is no universal Home Assistant action for "take a screenshot and classify
-what is playing" across every camera/TV/LLM integration. The blueprint therefore
-provides a provider-neutral hook instead of hard-coding one vendor.
-
-1. Select one or more **content classifier entities**. Their state (or common
-   `classification`, `content_type`, `label`, or `result` attribute) should contain
-   a label/description that the EQ keyword rules can understand.
-2. Optionally configure the **snapshot / AI classification actions** input. Those
-   actions run when a connected media player changes.
-3. The custom action sequence may take a snapshot, call the user's preferred AI or
-   vision integration, and update a selected classifier entity.
-4. The blueprint then consumes that classifier together with ordinary media-player
-   metadata.
-
-This keeps the core blueprint local and integration-agnostic while still allowing
-AI-assisted recognition where the user's Home Assistant installation supports it.
+The optional AI action hook is provider-neutral and may take screenshots/snapshots, invoke a vision/LLM integration, and update classifier entities.
 
 ## Automatic installation
 
-The blueprint is bundled inside the ULTIMEA custom integration. When the ULTIMEA
-integration loads, it automatically installs the blueprint at:
-
-```text
-/config/blueprints/automation/ultimea/adaptive_room_audio.yaml
-```
-
-No separate blueprint import is required for normal HACS/manual integration
-installations once ULTIMEA has loaded. HACS itself does not execute integration
-code at download time, so on a brand-new installation with no ULTIMEA config entry
-the blueprint appears when the integration is first loaded (for example when a
-soundbar is added/discovered). Existing configured installations get it on the
-next Home Assistant start/reload after updating ULTIMEA.
-
-Updates are deliberately safe:
-
-- a blueprint created by ULTIMEA is automatically updated while it remains
-  unchanged by the user;
-- an existing byte-identical manual copy is safely adopted and can receive future
-  bundled updates;
-- a user-modified or otherwise different existing blueprint is never overwritten.
-
-The public GitHub blueprint remains available as a manual fallback:
-
-```text
-https://github.com/Chreece/HA-Ultimea/blob/master/blueprints/automation/ultimea/adaptive_room_audio.yaml
-```
-
-After creating the automation, use **Run actions** once if you want the policy to
-be applied immediately rather than waiting for the next relevant event. Volume
-follow also performs a one-minute reconciliation for recovery and initialization.
+ULTIMEA installs the bundled blueprint to `/config/blueprints/automation/ultimea/adaptive_room_audio.yaml` when the integration loads. Managed copies update automatically only while unchanged by the user; modified copies are preserved.

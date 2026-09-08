@@ -4,6 +4,24 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.08.2
+
+### Added
+
+- Expanded Adaptive Room Audio into a reusable room-audio policy engine with three volume priorities: zero/mute, minimum, and scheduled/normal volume.
+- Every condition family now offers both Home Assistant's rich visual condition selector and a Jinja template alternative.
+- Added room-scoped and global room-list sources for minimum, zero/mute, ambient boost and Night policies. States may contain comma-separated room tokens; attributes may contain lists or comma-separated strings.
+- Added ambient-noise compensation with selectable binary/list/rich/template conditions, configurable boost amount, optional numeric boost entity, Min/Max application scope and cap.
+- Added connected-device activity gating using directly selected media players plus optional device and label selectors. Labels can automatically include labeled media-player entities or media players belonging to labeled devices.
+- Added zero/mute effects, optional custom actions, optional unmute behavior, Night condition groups, and EQ-follow rich/template gates.
+- Added extra trigger-entity selection for immediate reevaluation of arbitrary condition/template dependencies.
+
+### Changed
+
+- Manual Min/Max learning now understands the richer policy regimes and subtracts an active ambient boost before learning the base endpoint so boosts do not compound.
+- Manual changes during time fades remain non-learning interruptions; direct zero/Min policies remain immediate and have higher priority than the fade.
+- Connected/activity gating can leave an inactive room untouched or explicitly set its volume to zero.
+
 ## 2026.09.08.1
 
 ### Changed
