@@ -1,0 +1,211 @@
+name: ULTIMEA per-zone volume builder
+
+on:
+  push:
+    branches:
+      - dev/adaptive-zone-volume-20260908
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev/adaptive-zone-volume-20260908
+          fetch-depth: 0
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Add optional per-zone normal volume
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+
+          ROOT = Path('.')
+          public = ROOT / 'blueprints/automation/ultimea/adaptive_room_audio.yaml'
+          bundled = ROOT / 'custom_components/ultimea/blueprints/adaptive_room_audio.yaml'
+          text = public.read_text(encoding='utf-8')
+
+          def replace_once(value: str, old: str, new: str, label: str) -> str:
+              count = value.count(old)
+              assert count == 1, f'{label}: expected one match, got {count}'
+              return value.replace(old, new, 1)
+
+          # User-facing semantics: one optional normal-volume entity per soundbar area.
+          text = replace_once(
+              text,
+              "    Optional audio-input selector entities are paired to soundbars by Home\n    Assistant area. The entity picker can be searched by friendly name/label;\n    Home Assistant stores the selected entity ID. Exactly one selector must match\n    a soundbar area, so unassigned or ambiguous selectors never act globally.\n\n    Automatic restore/handoff changes use a guarded fixed-step transition. The\n",
+              "    Optional audio-input selector entities are paired to soundbars by Home\n    Assistant area. The entity picker can be searched by friendly name/label;\n    Home Assistant stores the selected entity ID. Exactly one selector must match\n    a soundbar area, so unassigned or ambiguous selectors never act globally.\n\n    Optional per-zone normal-volume entities use the same area matching. Exactly\n    one numeric entity in a soundbar's area overrides the global maximum/normal\n    volume for that soundbar. An input_number helper therefore gives that zone its\n    own persistent dashboard slider. No-area or ambiguous matches fall back to the\n    global maximum, and the quiet/minimum endpoint remains global.\n\n    Automatic restore/handoff changes use a guarded fixed-step transition. The\n",
+              'blueprint description zone volume',
+          )
+
+          # Add the new selector next to the global normal/max controls.
+          text = replace_once(
+              text,
+              "        max_volume_helper:\n          name: Maximum volume entity (optional)\n          description: >-\n            Optional numeric entity whose state overrides the fixed maximum above.\n            input_number and number entities can also be updated by manual-volume\n            learning; sensor entities are read-only. Values may use 0–1 or 0–100.\n            Select at most one entity.\n          default: []\n          selector:\n            entity:\n              multiple: true\n              filter:\n                - domain:\n                    - input_number\n                    - number\n                    - sensor\n\n    quiet_hours:\n",
+              "        max_volume_helper:\n          name: Maximum volume entity (optional)\n          description: >-\n            Optional numeric entity whose state overrides the fixed maximum above.\n            input_number and number entities can also be updated by manual-volume\n            learning; sensor entities are read-only. Values may use 0–1 or 0–100.\n            Select at most one entity.\n          default: []\n          selector:\n            entity:\n              multiple: true\n              filter:\n                - domain:\n                    - input_number\n                    - number\n                    - sensor\n        zone_volume_entities:\n          name: Per-zone normal-volume entities (optional)\n          description: >-\n            Optional numeric entities that override the global maximum/normal\n            volume per soundbar area. Put each entity in the same Home Assistant\n            area as its soundbar. Exactly one entity must match an area; no-area\n            and ambiguous matches fall back to the global maximum above.\n            input_number and number entities can learn manual normal-volume changes;\n            sensor entities are read-only. Values may use 0–1 or 0–100. An\n            input_number helper can be exposed as that zone's dashboard slider.\n          default: []\n          selector:\n            entity:\n              multiple: true\n              filter:\n                - domain:\n                    - input_number\n                    - number\n                    - sensor\n\n    quiet_hours:\n",
+              'zone volume selector',
+          )
+
+          text = replace_once(
+              text,
+              "  max_volume_source_input: !input max_volume_helper\n",
+              "  max_volume_source_input: !input max_volume_helper\n  zone_volume_entities: !input zone_volume_entities\n",
+              'zone volume variable',
+          )
+          text = replace_once(
+              text,
+              "  - trigger: state\n    entity_id: !input max_volume_helper\n    id: volume_source\n  - trigger: state\n    entity_id: !input audio_input_selectors\n",
+              "  - trigger: state\n    entity_id: !input max_volume_helper\n    id: volume_source\n  - trigger: state\n    entity_id: !input zone_volume_entities\n    id: volume_source\n  - trigger: state\n    entity_id: !input audio_input_selectors\n",
+              'zone volume trigger',
+          )
+
+          # Manual-volume handling: resolve a unique same-area zone normal-volume
+          # entity, calculate that soundbar's local schedule, and learn into the
+          # local writable entity instead of the global max source when applicable.
+          text = replace_once(
+              text,
+              "              manual_list_low: >-\n                {{ '*' in room_list_area_ids\n                   or (manual_bar_area != '' and manual_bar_area in room_list_area_ids) }}\n          - variables:\n              manual_extra_low: >-\n                {{ manual_binary_low or manual_tts_low or manual_voice_low\n                   or manual_night_override or manual_list_low }}\n              manual_expected_volume: >-\n                {{ min_volume if manual_extra_low else scheduled_volume }}\n              manual_volume: >-\n                {{ trigger.to_state.attributes.get('volume_level') | float(0) }}\n              manual_is_low_regime: >-\n                {{ in_quiet_hours or manual_extra_low }}\n              manual_in_time_transition: >-\n                {{ (before_transition_active or after_transition_active) and not manual_extra_low }}\n              manual_differs_from_expected: >-\n                {{ (manual_volume - manual_expected_volume) | abs > 0.004\n                   and (not manual_in_time_transition\n                        or (manual_volume - previous_scheduled_volume) | abs > 0.004) }}\n              manual_learning_entity: >-\n                {{ min_volume_entity if manual_is_low_regime else max_volume_entity }}\n",
+              "              manual_list_low: >-\n                {{ '*' in room_list_area_ids\n                   or (manual_bar_area != '' and manual_bar_area in room_list_area_ids) }}\n              manual_zone_volume_matches: >-\n                {% set ns = namespace(matches=[]) %}\n                {% set candidates = [zone_volume_entities]\n                   if zone_volume_entities is string else zone_volume_entities %}\n                {% if manual_bar_area != '' %}\n                  {% for entity in candidates %}\n                    {% if (area_id(entity) or '') == manual_bar_area %}\n                      {% set ns.matches = ns.matches + [entity] %}\n                    {% endif %}\n                  {% endfor %}\n                {% endif %}\n                {{ ns.matches }}\n              manual_zone_volume_entity: >-\n                {{ manual_zone_volume_matches[0]\n                   if manual_zone_volume_matches | length == 1 else '' }}\n          - variables:\n              manual_extra_low: >-\n                {{ manual_binary_low or manual_tts_low or manual_voice_low\n                   or manual_night_override or manual_list_low }}\n              manual_zone_max_candidate: >-\n                {% if manual_zone_volume_entity %}\n                  {% set scale = state_attr(manual_zone_volume_entity, 'max') | float(0) %}\n                  {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}\n                  {% set raw = states(manual_zone_volume_entity) | float(fallback) %}\n                  {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}\n                  {{ [[normalized, 0.0] | max, 1.0] | min }}\n                {% else %}\n                  {{ max_volume }}\n                {% endif %}\n              manual_max_volume: >-\n                {{ [min_volume, manual_zone_max_candidate] | max }}\n              manual_scheduled_volume: >-\n                {% if in_quiet_hours %}\n                  {{ min_volume }}\n                {% elif before_transition_active and transition_before_seconds > 0 %}\n                  {% set progress = 1 - (seconds_until_quiet_start / transition_before_seconds) %}\n                  {{ manual_max_volume - ((manual_max_volume - min_volume) * progress) }}\n                {% elif after_transition_active and transition_after_seconds > 0 %}\n                  {% set progress = seconds_since_quiet_end / transition_after_seconds %}\n                  {{ min_volume + ((manual_max_volume - min_volume) * progress) }}\n                {% else %}\n                  {{ manual_max_volume }}\n                {% endif %}\n              manual_previous_scheduled_volume: >-\n                {% if before_transition_active and transition_before_seconds > 0 %}\n                  {% set step = ((manual_max_volume - min_volume) * 5 / transition_before_seconds) %}\n                  {{ [manual_max_volume, manual_scheduled_volume + step] | min }}\n                {% elif after_transition_active and transition_after_seconds > 0 %}\n                  {% set step = ((manual_max_volume - min_volume) * 5 / transition_after_seconds) %}\n                  {{ [min_volume, manual_scheduled_volume - step] | max }}\n                {% else %}\n                  {{ manual_scheduled_volume }}\n                {% endif %}\n              manual_expected_volume: >-\n                {{ min_volume if manual_extra_low else manual_scheduled_volume }}\n              manual_volume: >-\n                {{ trigger.to_state.attributes.get('volume_level') | float(0) }}\n              manual_is_low_regime: >-\n                {{ in_quiet_hours or manual_extra_low }}\n              manual_in_time_transition: >-\n                {{ (before_transition_active or after_transition_active) and not manual_extra_low }}\n              manual_differs_from_expected: >-\n                {{ (manual_volume - manual_expected_volume) | abs > 0.004\n                   and (not manual_in_time_transition\n                        or (manual_volume - manual_previous_scheduled_volume) | abs > 0.004) }}\n              manual_learning_entity: >-\n                {{ min_volume_entity if manual_is_low_regime\n                   else (manual_zone_volume_entity if manual_zone_volume_entity else max_volume_entity) }}\n",
+              'manual zone volume logic',
+          )
+
+          # Per-soundbar volume policy: resolve the same unique area match and derive
+          # a local max/schedule before applying existing low-volume and handoff rules.
+          text = replace_once(
+              text,
+              "                    list_low: >-\n                      {{ '*' in room_list_area_ids\n                         or (bar_area != '' and bar_area in room_list_area_ids) }}\n                - variables:\n                    extra_low: >-\n                      {{ binary_low or tts_low or voice_low or night_override_active or list_low }}\n                    desired_volume: >-\n                      {{ min_volume if extra_low else scheduled_volume }}\n                    current_volume: >-\n                      {{ state_attr(bar, 'volume_level') | float(-1) }}\n                    previous_transition_target: >-\n                      {{ previous_scheduled_volume | float(desired_volume) | round(2) }}\n",
+              "                    list_low: >-\n                      {{ '*' in room_list_area_ids\n                         or (bar_area != '' and bar_area in room_list_area_ids) }}\n                    zone_volume_matches: >-\n                      {% set ns = namespace(matches=[]) %}\n                      {% set candidates = [zone_volume_entities]\n                         if zone_volume_entities is string else zone_volume_entities %}\n                      {% if bar_area != '' %}\n                        {% for entity in candidates %}\n                          {% if (area_id(entity) or '') == bar_area %}\n                            {% set ns.matches = ns.matches + [entity] %}\n                          {% endif %}\n                        {% endfor %}\n                      {% endif %}\n                      {{ ns.matches }}\n                    zone_volume_entity: >-\n                      {{ zone_volume_matches[0]\n                         if zone_volume_matches | length == 1 else '' }}\n                - variables:\n                    extra_low: >-\n                      {{ binary_low or tts_low or voice_low or night_override_active or list_low }}\n                    zone_max_candidate: >-\n                      {% if zone_volume_entity %}\n                        {% set scale = state_attr(zone_volume_entity, 'max') | float(0) %}\n                        {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}\n                        {% set raw = states(zone_volume_entity) | float(fallback) %}\n                        {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}\n                        {{ [[normalized, 0.0] | max, 1.0] | min }}\n                      {% else %}\n                        {{ max_volume }}\n                      {% endif %}\n                    bar_max_volume: >-\n                      {{ [min_volume, zone_max_candidate] | max }}\n                    bar_scheduled_volume: >-\n                      {% if in_quiet_hours %}\n                        {{ min_volume }}\n                      {% elif before_transition_active and transition_before_seconds > 0 %}\n                        {% set progress = 1 - (seconds_until_quiet_start / transition_before_seconds) %}\n                        {{ bar_max_volume - ((bar_max_volume - min_volume) * progress) }}\n                      {% elif after_transition_active and transition_after_seconds > 0 %}\n                        {% set progress = seconds_since_quiet_end / transition_after_seconds %}\n                        {{ min_volume + ((bar_max_volume - min_volume) * progress) }}\n                      {% else %}\n                        {{ bar_max_volume }}\n                      {% endif %}\n                    bar_previous_scheduled_volume: >-\n                      {% if before_transition_active and transition_before_seconds > 0 %}\n                        {% set step = ((bar_max_volume - min_volume) * 5 / transition_before_seconds) %}\n                        {{ [bar_max_volume, bar_scheduled_volume + step] | min }}\n                      {% elif after_transition_active and transition_after_seconds > 0 %}\n                        {% set step = ((bar_max_volume - min_volume) * 5 / transition_after_seconds) %}\n                        {{ [min_volume, bar_scheduled_volume - step] | max }}\n                      {% else %}\n                        {{ bar_scheduled_volume }}\n                      {% endif %}\n                    desired_volume: >-\n                      {{ min_volume if extra_low else bar_scheduled_volume }}\n                    current_volume: >-\n                      {{ state_attr(bar, 'volume_level') | float(-1) }}\n                    previous_transition_target: >-\n                      {{ bar_previous_scheduled_volume | float(desired_volume) | round(2) }}\n",
+              'bar zone volume logic',
+          )
+
+          text = text.replace(
+              "{{ max_volume - ((max_volume - min_volume) * progress) }}",
+              "{{ bar_max_volume - ((bar_max_volume - min_volume) * progress) }}",
+              1,
+          )
+          text = text.replace(
+              "{{ min_volume + ((max_volume - min_volume) * progress) }}",
+              "{{ min_volume + ((bar_max_volume - min_volume) * progress) }}",
+              1,
+          )
+
+          # The two replacements above must target the boundary_handoff_target block,
+          # not the earlier global schedule. Verify local target now references the zone max.
+          assert "boundary_handoff_target: >-" in text
+          boundary = text.split("boundary_handoff_target: >-", 1)[1].split("boundary_guarded_handoff_required:", 1)[0]
+          if "bar_max_volume" not in boundary:
+              # Restore the global schedule if positional replacements hit it and patch
+              # the boundary block explicitly.
+              text = text.replace(
+                  "{{ bar_max_volume - ((bar_max_volume - min_volume) * progress) }}",
+                  "{{ max_volume - ((max_volume - min_volume) * progress) }}",
+                  1,
+              )
+              text = text.replace(
+                  "{{ min_volume + ((bar_max_volume - min_volume) * progress) }}",
+                  "{{ min_volume + ((max_volume - min_volume) * progress) }}",
+                  1,
+              )
+              old_boundary = '''                    boundary_handoff_target: >-\n                      {% if before_transition_active and transition_before_seconds > 0 %}\n                        {% set future_until = [0, seconds_until_quiet_start - guarded_handoff_duration] | max %}\n                        {% set progress = 1 - (future_until / transition_before_seconds) %}\n                        {{ max_volume - ((max_volume - min_volume) * progress) }}\n                      {% elif after_transition_active and transition_after_seconds > 0 %}\n                        {% set future_since = [transition_after_seconds, seconds_since_quiet_end + guarded_handoff_duration] | min %}\n                        {% set progress = future_since / transition_after_seconds %}\n                        {{ min_volume + ((max_volume - min_volume) * progress) }}\n                      {% else %}\n                        {{ desired_volume }}\n                      {% endif %}\n'''
+              new_boundary = old_boundary.replace('max_volume', 'bar_max_volume')
+              text = replace_once(text, old_boundary, new_boundary, 'zone boundary handoff target')
+
+          # Public and bundled copies stay identical.
+          public.write_text(text, encoding='utf-8')
+          bundled.write_text(text, encoding='utf-8')
+
+          # Regression coverage.
+          test_path = ROOT / 'tests/test_blueprint.py'
+          tests = test_path.read_text(encoding='utf-8')
+          tests = replace_once(
+              tests,
+              '        "max_volume_helper",\n',
+              '        "max_volume_helper",\n        "zone_volume_entities",\n',
+              'required zone volume input',
+          )
+          tests = replace_once(
+              tests,
+              '    for key in ("min_volume_helper", "max_volume_helper"):\n',
+              '    for key in ("min_volume_helper", "max_volume_helper", "zone_volume_entities"):\n',
+              'numeric entity selector loop',
+          )
+          tests = replace_once(
+              tests,
+              '    assert "handoff_list_low_now" in text\n',
+              '    assert "handoff_list_low_now" in text\n    assert "zone_volume_matches" in text\n    assert "zone_volume_entity" in text\n    assert "manual_zone_volume_entity" in text\n    assert "manual_zone_max_candidate" in text\n    assert "bar_max_volume" in text\n    assert "bar_scheduled_volume" in text\n    assert "manual_scheduled_volume" in text\n',
+              'zone volume text assertions',
+          )
+          test_path.write_text(tests, encoding='utf-8')
+
+          # Version and release documentation.
+          manifest_path = ROOT / 'custom_components/ultimea/manifest.json'
+          manifest = json.loads(manifest_path.read_text(encoding='utf-8'))
+          assert manifest['version'] == '2026.09.08.2'
+          manifest['version'] = '2026.09.08.3'
+          manifest_path.write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
+
+          changelog_path = ROOT / 'CHANGELOG.md'
+          changelog = changelog_path.read_text(encoding='utf-8')
+          heading = '''## 2026.09.08.3\n\n### Added\n\n- Added optional per-zone normal-volume entities. Exactly one numeric entity in the same Home Assistant area as a soundbar overrides the global maximum/normal volume for that zone; unassigned or ambiguous matches safely fall back to the global maximum.\n- `input_number`/`number` zone volume entities participate in manual normal-volume learning, while sensor-backed zone volumes remain read-only.\n\n### Changed\n\n- Quiet-hour fades and guarded restore/handoff targets now calculate against each soundbar's effective zone maximum while retaining the shared global minimum/quiet endpoint and fixed five-second transition stepping.\n\n'''
+          assert '## 2026.09.08.3' not in changelog
+          changelog = changelog.replace('## 2026.09.08.2\n', heading + '## 2026.09.08.2\n', 1)
+          changelog_path.write_text(changelog, encoding='utf-8')
+          (ROOT / 'custom_components/ultimea/CHANGELOG.md').write_text(changelog, encoding='utf-8')
+
+          readme_path = ROOT / 'README.md'
+          readme = readme_path.read_text(encoding='utf-8')
+          readme = readme.replace('release-2026.09.08.2-blue', 'release-2026.09.08.3-blue')
+          readme = replace_once(
+              readme,
+              '- bind an optional `input_select`/`select` audio-input selector to each soundbar by Home Assistant area; the picker is searchable by friendly label and ambiguous/unassigned selectors are ignored;\n',
+              '- bind an optional `input_select`/`select` audio-input selector to each soundbar by Home Assistant area; the picker is searchable by friendly label and ambiguous/unassigned selectors are ignored;\n- give each soundbar area an optional numeric normal-volume entity, such as an `input_number` dashboard slider, with the global maximum used only as fallback;\n',
+              'readme zone volume bullet',
+          )
+          readme_path.write_text(readme, encoding='utf-8')
+
+          docs_path = ROOT / 'docs/ADAPTIVE_AUDIO_BLUEPRINT.md'
+          docs = docs_path.read_text(encoding='utf-8')
+          docs = replace_once(
+              docs,
+              '## Minimum and maximum volume\n\nMinimum and maximum can each come from either:\n',
+              '''## Minimum and maximum volume\n\n### Optional per-zone normal volume\n\nYou can select multiple numeric entities as **Per-zone normal-volume entities**.\nFor each ULTIMEA soundbar, the blueprint looks for exactly one selected numeric\nentity in the same Home Assistant area:\n\n- one match: that value becomes the soundbar's normal/maximum endpoint;\n- no match: the global maximum below is used;\n- more than one match: the area is treated as ambiguous and the global maximum is\n  used rather than guessing;\n- an `input_number` helper is ideal when you want a persistent dashboard slider;\n- writable `input_number`/`number` zone entities can learn manual normal-volume\n  changes when learning is enabled; sensors remain read-only.\n\nThe minimum/quiet endpoint remains global. Quiet-hour fades are calculated from\neach soundbar's effective zone maximum down to that shared minimum, so different\nzones can follow the same quiet-hours policy without sharing their normal volume.\n\nMinimum and global-fallback maximum can each come from either:\n''',
+              'docs per-zone section',
+          )
+          docs_path.write_text(docs, encoding='utf-8')
+
+          release_notes = '''# ULTIMEA 2026.09.08.3\n\nThis release adds the next zone-first Adaptive Room Audio capability: optional\nper-zone normal volume.\n\n## Per-zone normal volume\n\n- Select any number of `input_number`, `number`, or numeric sensor entities.\n- Put each selected entity in the same Home Assistant area as its ULTIMEA soundbar.\n- Exactly one same-area match overrides the global maximum for that soundbar.\n- No match or multiple matches fall back to the global maximum; nothing is guessed.\n- `input_number` helpers provide persistent dashboard sliders and can learn manual\n  normal-volume changes when learning is enabled.\n- The shared minimum/quiet volume remains global.\n- Quiet-boundary fades and guarded restores calculate against each zone's effective\n  maximum and retain fixed five-second stepping.\n'''
+          (ROOT / 'RELEASE_NOTES_2026.09.08.3.md').write_text(release_notes, encoding='utf-8')
+          (ROOT / 'custom_components/ultimea/RELEASE_NOTES_2026.09.08.3.md').write_text(release_notes, encoding='utf-8')
+          PY
+      - name: Test per-zone volume tree
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pytest pyyaml jinja2
+          .venv/bin/python -m compileall -q custom_components/ultimea
+          .venv/bin/python -m pytest -q tests
+          .venv/bin/python - <<'PY'
+          import json
+          from pathlib import Path
+          for path in Path('custom_components').rglob('*.json'):
+              json.loads(path.read_text(encoding='utf-8'))
+          public = Path('blueprints/automation/ultimea/adaptive_room_audio.yaml').read_bytes()
+          bundled = Path('custom_components/ultimea/blueprints/adaptive_room_audio.yaml').read_bytes()
+          assert public == bundled
+          text = public.decode('utf-8')
+          boundary = text.split('boundary_handoff_target: >-', 1)[1].split('boundary_guarded_handoff_required:', 1)[0]
+          assert 'bar_max_volume' in boundary
+          assert 'max_volume - ((max_volume - min_volume)' not in boundary
+          PY
+      - name: Commit tested result and remove builder
+        run: |
+          rm .github/workflows/_ultimea_zone_volume_patch.yml
+          git config user.name "Chris Chreece"
+          git config user.email "68458228+Chreece@users.noreply.github.com"
+          git add -A
+          git commit -m "Add optional per-zone normal volume"
+          git push origin HEAD:dev/adaptive-zone-volume-20260908
