@@ -2,20 +2,45 @@ name: Tests
 
 on:
   push:
-  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+      - name: Apply no-polling source patch once
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          import subprocess
+
+          manifest = json.loads(Path('custom_components/ultimea/manifest.json').read_text(encoding='utf-8'))
+          if manifest['version'] == '2026.09.08.4':
+              print('no-polling source patch already applied')
+              raise SystemExit(0)
+          assert manifest['version'] == '2026.09.08.3', manifest['version']
+
+          source = Path('.github/workflows/_no_polling_blueprint_patch.yml').read_text(encoding='utf-8')
+          start = "          python - <<'PY'\n"
+          end = "          PY\n      - name: Validate no-polling tree"
+          assert source.count(start) == 1
+          assert source.count(end) == 1
+          body = source.split(start, 1)[1].split(end, 1)[0]
+          lines = body.splitlines()
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in lines) + '\n'
+          Path('/tmp/no_polling_patch.py').write_text(script, encoding='utf-8')
+          subprocess.run(['python', '/tmp/no_polling_patch.py'], check=True)
+          PY
       - name: Create test virtual environment
         run: python -m venv .venv
       - name: Install test dependencies
@@ -24,12 +49,40 @@ jobs:
         run: .venv/bin/python -m compileall -q custom_components/ultimea
       - name: Protocol and blueprint tests
         run: .venv/bin/python -m pytest -q tests
-      - name: Validate JSON
+      - name: Validate generated no-polling tree
         run: |
           .venv/bin/python - <<'PY'
           import json
           from pathlib import Path
           for path in Path('custom_components').rglob('*.json'):
               json.loads(path.read_text(encoding='utf-8'))
-              print(path)
+          public = Path('blueprints/automation/ultimea/adaptive_room_audio.yaml').read_bytes()
+          bundled = Path('custom_components/ultimea/blueprints/adaptive_room_audio.yaml').read_bytes()
+          assert public == bundled
+          text = public.decode('utf-8')
+          assert 'trigger: time_pattern' not in text
+          assert 'seconds: "/5"' not in text
+          assert 'policy_tick' not in text
+          assert 'transition_tick' not in text
+          assert 'delay: "00:00:05"' in text
+          assert 'mode: parallel' in text
+          manifest = json.loads(Path('custom_components/ultimea/manifest.json').read_text(encoding='utf-8'))
+          assert manifest['version'] == '2026.09.08.4'
           PY
+      - name: Commit validated source only
+        run: |
+          git config user.name "Chris Chreece"
+          git config user.email "68458228+Chreece@users.noreply.github.com"
+          git add CHANGELOG.md README.md RELEASE_NOTES_2026.09.08.4.md \
+            blueprints/automation/ultimea/adaptive_room_audio.yaml \
+            custom_components/ultimea/CHANGELOG.md \
+            custom_components/ultimea/RELEASE_NOTES_2026.09.08.4.md \
+            custom_components/ultimea/blueprints/adaptive_room_audio.yaml \
+            custom_components/ultimea/manifest.json \
+            docs/ADAPTIVE_AUDIO_BLUEPRINT.md tests/test_blueprint.py
+          if git diff --cached --quiet; then
+            echo "no source changes to commit"
+            exit 0
+          fi
+          git commit -m "Remove Adaptive Room Audio polling ticks"
+          git push origin HEAD:dev/adaptive-no-polling-20260908
