@@ -1,0 +1,824 @@
+blueprint:
+  name: ULTIMEA Adaptive Room Audio
+  description: >-
+    Room-aware automation for ULTIMEA soundbars. It can learn a normal and quiet
+    volume, lower volume during quiet hours / TTS / active binary conditions /
+    Assist activity, fade only around the quiet-hours boundaries, select Night
+    mode, and follow the content playing on a connected media player.
+
+    Create two input_number helpers for the learned minimum and maximum volume.
+    Helpers may use either a 0–1 range or a 0–100 percentage range. Manual volume
+    changes are learned into the active endpoint instead of being immediately
+    overwritten. For different rooms with different learned levels, create one
+    automation instance per room/group.
+
+    "Comma-list" entities are optional sensors/text entities whose state contains
+    comma-separated area IDs, area names, or entity IDs. If an item resolves to
+    the same area as a soundbar, that room is treated as a quiet/low-volume room.
+    The special values `all` and `*` apply globally.
+
+    EQ follow uses media-player state plus common content attributes such as
+    app_name, media_title, media_content_type and source. Optional classifier
+    entities can provide labels such as Movie, Music, Voice, Sport or Game. An
+    optional action hook can run a snapshot/AI classifier first; the hook is
+    provider-agnostic and should update one of the selected classifier entities.
+  domain: automation
+  source_url: https://github.com/Chreece/HA-Ultimea/blob/master/blueprints/automation/ultimea/adaptive_room_audio.yaml
+  homeassistant:
+    min_version: 2026.7.0
+  input:
+    soundbars:
+      name: Soundbars and persistent volume limits
+      icon: mdi:soundbar
+      collapsed: false
+      input:
+        ultimea_players:
+          name: ULTIMEA soundbars
+          description: Select the ULTIMEA media_player entities this automation controls.
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - integration: ultimea
+                  domain: media_player
+        min_volume_helper:
+          name: Learned minimum volume helper
+          description: >-
+            input_number used for quiet/TTS/Assist volume. Use either a 0–1 range
+            or a 0–100 percentage range. Manual changes while in a low-volume
+            regime update this helper.
+          selector:
+            entity:
+              filter:
+                - domain: input_number
+        max_volume_helper:
+          name: Learned maximum volume helper
+          description: >-
+            input_number used for normal volume. Use either a 0–1 range or a
+            0–100 percentage range. Manual changes in normal operation update
+            this helper.
+          selector:
+            entity:
+              filter:
+                - domain: input_number
+
+    quiet_hours:
+      name: Quiet hours
+      icon: mdi:weather-night
+      collapsed: false
+      input:
+        quiet_start:
+          name: Quiet hours start
+          default: "22:00:00"
+          selector:
+            time: {}
+        quiet_end:
+          name: Quiet hours end
+          default: "07:00:00"
+          selector:
+            time: {}
+        transition_before:
+          name: Fade before quiet hours
+          description: >-
+            Time before quiet hours during which volume moves smoothly from the
+            learned maximum to the learned minimum.
+          default:
+            hours: 0
+            minutes: 30
+            seconds: 0
+          selector:
+            duration:
+              enable_day: false
+              enable_second: true
+        transition_after:
+          name: Fade after quiet hours
+          description: >-
+            Time after quiet hours during which volume moves smoothly from the
+            learned minimum to the learned maximum.
+          default:
+            hours: 0
+            minutes: 30
+            seconds: 0
+          selector:
+            duration:
+              enable_day: false
+              enable_second: true
+
+    low_volume_conditions:
+      name: Conditions that request minimum volume
+      icon: mdi:volume-low
+      collapsed: true
+      input:
+        low_volume_binary_entities:
+          name: Binary entities
+          description: >-
+            Selected binary_sensor/input_boolean entities lower soundbars in the
+            same area. Entities without an area are treated as global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - binary_sensor
+                    - input_boolean
+        list_state_entities:
+          name: Comma-list entities
+          description: >-
+            Entities whose state is a comma-separated list of active area IDs,
+            area names, or entity IDs. Matching a soundbar's area requests the
+            learned minimum volume. `all` or `*` applies to every selected bar.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        tts_media_players:
+          name: TTS / announcement media players
+          description: >-
+            When a selected media player is playing or buffering, soundbars in
+            the same area are lowered. Media players without an area are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        voice_assistants:
+          name: Voice assistants
+          description: >-
+            Assist Satellite entities. Any state other than idle lowers a bar in
+            the same area. Satellites without an area are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: assist_satellite
+        night_mode_entities:
+          name: Night-mode booleans / binary sensors
+          description: >-
+            When on, these request both minimum volume and ULTIMEA Night mode for
+            the same area. Entities without an area are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain:
+                    - binary_sensor
+                    - input_boolean
+
+    content_follow:
+      name: Connected content and EQ follow
+      icon: mdi:movie-open-play
+      collapsed: true
+      input:
+        connected_media_players:
+          name: Devices connected to the soundbar
+          description: >-
+            Select TVs, streamers, consoles or other media_player entities whose
+            current app/content should drive the ULTIMEA sound mode. Area
+            assignment is used to pair them to each soundbar; entities without an
+            area are treated as global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        content_classifier_entities:
+          name: Optional content / AI classifier entities
+          description: >-
+            Optional entities whose state or common label attributes contain a
+            content class such as Movie, Music, Voice, Sport or Game. Area
+            assignment is respected; entities without an area are global.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        ai_content_actions:
+          name: Optional snapshot / AI classification actions
+          description: >-
+            Optional actions run when a connected media player changes. Use this
+            hook to take a snapshot and call any AI/vision integration, then write
+            the result to one of the classifier entities above. Leave empty when
+            media metadata is enough.
+          default: []
+          selector:
+            action: {}
+        eq_fallback_mode:
+          name: EQ fallback when content is unknown
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Game
+        normal_sound_mode:
+          name: Mode to restore after Night when EQ follow is off
+          description: >-
+            Used only when Night mode is enabled and EQ follow is disabled or has
+            no classification. `No change` leaves the current mode untouched.
+          default: Movie
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Game
+        game_keywords:
+          name: Game keywords
+          default: "game,gaming,playstation,xbox,nintendo,steam,geforce now"
+          selector:
+            text: {}
+        sport_keywords:
+          name: Sport keywords
+          default: "sport,sports,football,soccer,basketball,tennis,formula 1,f1,nfl,nba,uefa"
+          selector:
+            text: {}
+        voice_keywords:
+          name: Voice keywords
+          default: "voice,speech,talk,podcast,audiobook,news"
+          selector:
+            text: {}
+        music_keywords:
+          name: Music keywords
+          default: "music,audio,song,album,spotify,tidal,deezer,music assistant,youtube music"
+          selector:
+            text: {}
+        movie_keywords:
+          name: Movie / TV keywords
+          default: "movie,film,video,tv,episode,series,netflix,prime video,disney,plex,jellyfin,kodi"
+          selector:
+            text: {}
+
+    options:
+      name: Features to apply
+      icon: mdi:tune-variant
+      collapsed: false
+      input:
+        apply_volume_follow:
+          name: Volume follow
+          description: Apply learned min/max volume and quiet-hour fades.
+          default: true
+          selector:
+            boolean: {}
+        apply_night_mode:
+          name: Night mode
+          description: Select ULTIMEA Night mode during quiet hours or a night-mode boolean.
+          default: true
+          selector:
+            boolean: {}
+        apply_eq_follow:
+          name: EQ follow
+          description: Select Movie/Music/Voice/Sport/Game from connected content metadata/classification.
+          default: false
+          selector:
+            boolean: {}
+
+variables:
+  ultimea_players: !input ultimea_players
+  min_volume_helper: !input min_volume_helper
+  max_volume_helper: !input max_volume_helper
+  quiet_start_time: !input quiet_start
+  quiet_end_time: !input quiet_end
+  transition_before_value: !input transition_before
+  transition_after_value: !input transition_after
+  low_volume_binary_entities: !input low_volume_binary_entities
+  list_state_entities: !input list_state_entities
+  tts_media_players: !input tts_media_players
+  voice_assistants: !input voice_assistants
+  night_mode_entities: !input night_mode_entities
+  connected_media_players: !input connected_media_players
+  content_classifier_entities: !input content_classifier_entities
+  eq_fallback_mode: !input eq_fallback_mode
+  normal_sound_mode: !input normal_sound_mode
+  game_keywords: !input game_keywords
+  sport_keywords: !input sport_keywords
+  voice_keywords: !input voice_keywords
+  music_keywords: !input music_keywords
+  movie_keywords: !input movie_keywords
+  apply_volume_follow: !input apply_volume_follow
+  apply_night_mode: !input apply_night_mode
+  apply_eq_follow: !input apply_eq_follow
+
+triggers:
+  - trigger: homeassistant
+    event: start
+    id: startup
+  - trigger: time
+    at: !input quiet_start
+    id: quiet_start
+  - trigger: time
+    at: !input quiet_end
+    id: quiet_end
+  - trigger: time_pattern
+    seconds: "/5"
+    id: transition_tick
+    enabled: !input apply_volume_follow
+  - trigger: time_pattern
+    minutes: "/1"
+    seconds: "0"
+    id: policy_tick
+    enabled: !input apply_volume_follow
+  - trigger: state
+    entity_id: !input ultimea_players
+    id: bar_change
+  - trigger: state
+    entity_id: !input min_volume_helper
+    id: volume_helper
+  - trigger: state
+    entity_id: !input max_volume_helper
+    id: volume_helper
+  - trigger: state
+    entity_id: !input low_volume_binary_entities
+    id: low_binary_change
+  - trigger: state
+    entity_id: !input list_state_entities
+    id: list_change
+  - trigger: state
+    entity_id: !input tts_media_players
+    id: tts_change
+  - trigger: state
+    entity_id: !input voice_assistants
+    id: voice_change
+  - trigger: state
+    entity_id: !input night_mode_entities
+    id: night_override_change
+  - trigger: state
+    entity_id: !input connected_media_players
+    id: connected_change
+  - trigger: state
+    entity_id: !input content_classifier_entities
+    id: classifier_change
+
+conditions: []
+
+actions:
+  - variables:
+      trigger_id: "{{ trigger.id | default('') }}"
+      trigger_entity: >-
+        {{ trigger.entity_id if trigger is defined and trigger.platform == 'state' else '' }}
+      now_seconds: >-
+        {{ now().hour * 3600 + now().minute * 60 + now().second }}
+      quiet_start_seconds: >-
+        {% set p = quiet_start_time.split(':') | map('int') | list %}
+        {{ p[0] * 3600 + p[1] * 60 + (p[2] if p | length > 2 else 0) }}
+      quiet_end_seconds: >-
+        {% set p = quiet_end_time.split(':') | map('int') | list %}
+        {{ p[0] * 3600 + p[1] * 60 + (p[2] if p | length > 2 else 0) }}
+      transition_before_seconds: >-
+        {{ (transition_before_value.get('hours', 0) | int) * 3600
+           + (transition_before_value.get('minutes', 0) | int) * 60
+           + (transition_before_value.get('seconds', 0) | int) }}
+      transition_after_seconds: >-
+        {{ (transition_after_value.get('hours', 0) | int) * 3600
+           + (transition_after_value.get('minutes', 0) | int) * 60
+           + (transition_after_value.get('seconds', 0) | int) }}
+      min_volume_candidate: >-
+        {% set v = states(min_volume_helper) | float(0.20) %}
+        {% set scale = state_attr(min_volume_helper, 'max') | float(1) %}
+        {% set normalized = v / 100 if scale > 1.5 else v %}
+        {{ [[normalized, 0.0] | max, 1.0] | min }}
+      max_volume_candidate: >-
+        {% set v = states(max_volume_helper) | float(0.50) %}
+        {% set scale = state_attr(max_volume_helper, 'max') | float(1) %}
+        {% set normalized = v / 100 if scale > 1.5 else v %}
+        {{ [[normalized, 0.0] | max, 1.0] | min }}
+
+  - variables:
+      quiet_hours_enabled: "{{ quiet_start_seconds != quiet_end_seconds }}"
+      in_quiet_hours: >-
+        {% if quiet_start_seconds == quiet_end_seconds %}
+          false
+        {% elif quiet_start_seconds < quiet_end_seconds %}
+          {{ quiet_start_seconds <= now_seconds < quiet_end_seconds }}
+        {% else %}
+          {{ now_seconds >= quiet_start_seconds or now_seconds < quiet_end_seconds }}
+        {% endif %}
+      seconds_until_quiet_start: >-
+        {{ (quiet_start_seconds - now_seconds + 86400) % 86400 }}
+      seconds_since_quiet_end: >-
+        {{ (now_seconds - quiet_end_seconds + 86400) % 86400 }}
+      min_volume: "{{ [min_volume_candidate, max_volume_candidate] | min }}"
+      max_volume: "{{ [min_volume_candidate, max_volume_candidate] | max }}"
+
+  - variables:
+      before_transition_active: >-
+        {{ quiet_hours_enabled
+           and not in_quiet_hours
+           and transition_before_seconds > 0
+           and 0 < seconds_until_quiet_start <= transition_before_seconds }}
+      after_transition_active: >-
+        {{ quiet_hours_enabled
+           and not in_quiet_hours
+           and transition_after_seconds > 0
+           and seconds_since_quiet_end < transition_after_seconds }}
+      scheduled_volume: >-
+        {% if in_quiet_hours %}
+          {{ min_volume }}
+        {% elif quiet_hours_enabled
+                and transition_before_seconds > 0
+                and 0 < seconds_until_quiet_start <= transition_before_seconds %}
+          {% set progress = 1 - (seconds_until_quiet_start / transition_before_seconds) %}
+          {{ max_volume - ((max_volume - min_volume) * progress) }}
+        {% elif quiet_hours_enabled
+                and transition_after_seconds > 0
+                and seconds_since_quiet_end < transition_after_seconds %}
+          {% set progress = seconds_since_quiet_end / transition_after_seconds %}
+          {{ min_volume + ((max_volume - min_volume) * progress) }}
+        {% else %}
+          {{ max_volume }}
+        {% endif %}
+      bar_volume_changed: >-
+        {{ trigger_id == 'bar_change'
+           and trigger.from_state is not none
+           and trigger.to_state is not none
+           and trigger.from_state.attributes.get('volume_level') != trigger.to_state.attributes.get('volume_level')
+           and trigger.to_state.attributes.get('volume_level') is not none }}
+      bar_became_on: >-
+        {{ trigger_id == 'bar_change'
+           and trigger.from_state is not none
+           and trigger.to_state is not none
+           and trigger.from_state.state != 'on'
+           and trigger.to_state.state == 'on' }}
+
+  # A volume attribute change on an ULTIMEA media player is special: if it is
+  # not the value this blueprint currently calculates, treat it as a manual
+  # adjustment and learn it into the active endpoint. Self-generated volume
+  # updates match the calculated target and are ignored here.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ apply_volume_follow and bar_volume_changed }}"
+        sequence:
+          - variables:
+              manual_bar: "{{ trigger_entity }}"
+              manual_bar_area: "{{ area_id(trigger_entity) or '' }}"
+              manual_binary_low: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in low_volume_binary_entities %}
+                  {% set entity_area = area_id(entity) or '' %}
+                  {% if is_state(entity, 'on')
+                        and (entity_area == '' or (manual_bar_area != '' and entity_area == manual_bar_area)) %}
+                    {% set ns.active = true %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.active }}
+              manual_tts_low: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in tts_media_players %}
+                  {% set entity_area = area_id(entity) or '' %}
+                  {% if states(entity) in ['playing', 'buffering']
+                        and (entity_area == '' or (manual_bar_area != '' and entity_area == manual_bar_area)) %}
+                    {% set ns.active = true %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.active }}
+              manual_voice_low: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in voice_assistants %}
+                  {% set entity_area = area_id(entity) or '' %}
+                  {% if states(entity) not in ['idle', 'unknown', 'unavailable']
+                        and (entity_area == '' or (manual_bar_area != '' and entity_area == manual_bar_area)) %}
+                    {% set ns.active = true %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.active }}
+              manual_night_override: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in night_mode_entities %}
+                  {% set entity_area = area_id(entity) or '' %}
+                  {% if is_state(entity, 'on')
+                        and (entity_area == '' or (manual_bar_area != '' and entity_area == manual_bar_area)) %}
+                    {% set ns.active = true %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.active }}
+              manual_list_low: >-
+                {% set ns = namespace(active=false) %}
+                {% for holder in list_state_entities %}
+                  {% for raw in states(holder).split(',') %}
+                    {% set token = raw | trim %}
+                    {% if token %}
+                      {% if token | lower in ['all', '*'] %}
+                        {% set ns.active = true %}
+                      {% else %}
+                        {% set resolved_area = token if token in areas() else area_id(token) %}
+                        {% if manual_bar_area != '' and resolved_area == manual_bar_area %}
+                          {% set ns.active = true %}
+                        {% endif %}
+                      {% endif %}
+                    {% endif %}
+                  {% endfor %}
+                {% endfor %}
+                {{ ns.active }}
+          - variables:
+              manual_extra_low: >-
+                {{ manual_binary_low or manual_tts_low or manual_voice_low
+                   or manual_night_override or manual_list_low }}
+              manual_expected_volume: >-
+                {{ min_volume if manual_extra_low else scheduled_volume }}
+              manual_volume: >-
+                {{ trigger.to_state.attributes.get('volume_level') | float(0) }}
+              manual_is_low_regime: >-
+                {{ in_quiet_hours or manual_extra_low }}
+              manual_differs_from_expected: >-
+                {{ (manual_volume - manual_expected_volume) | abs > 0.004 }}
+          - choose:
+              - conditions:
+                  - condition: template
+                    value_template: "{{ manual_differs_from_expected and manual_is_low_regime }}"
+                sequence:
+                  - action: input_number.set_value
+                    target:
+                      entity_id: "{{ min_volume_helper }}"
+                    data:
+                      value: >-
+                        {% set scale = state_attr(min_volume_helper, 'max') | float(1) %}
+                        {{ (manual_volume * 100 if scale > 1.5 else manual_volume) | round(2) }}
+              - conditions:
+                  - condition: template
+                    value_template: "{{ manual_differs_from_expected and not manual_is_low_regime }}"
+                sequence:
+                  - action: input_number.set_value
+                    target:
+                      entity_id: "{{ max_volume_helper }}"
+                    data:
+                      value: >-
+                        {% set scale = state_attr(max_volume_helper, 'max') | float(1) %}
+                        {{ (manual_volume * 100 if scale > 1.5 else manual_volume) | round(2) }}
+          - stop: Manual ULTIMEA volume change handled without fighting the user.
+
+  # Ignore unrelated ULTIMEA attribute changes. The one exception is a bar
+  # becoming ON, when the current room policy should be applied once.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ trigger_id == 'bar_change' and not bar_became_on }}"
+        sequence:
+          - stop: ULTIMEA state change left untouched.
+
+  # Volume policy. The 5-second clock is used only inside a configured quiet
+  # boundary transition; all other state-driven volume changes are direct.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ apply_volume_follow
+                 and (trigger_id != 'transition_tick'
+                      or before_transition_active
+                      or after_transition_active) }}
+        sequence:
+          - repeat:
+              for_each: "{{ ultimea_players }}"
+              sequence:
+                - variables:
+                    bar: "{{ repeat.item }}"
+                    bar_area: "{{ area_id(repeat.item) or '' }}"
+                    binary_low: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in low_volume_binary_entities %}
+                        {% set entity_area = area_id(entity) or '' %}
+                        {% if is_state(entity, 'on')
+                              and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                          {% set ns.active = true %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.active }}
+                    tts_low: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in tts_media_players %}
+                        {% set entity_area = area_id(entity) or '' %}
+                        {% if states(entity) in ['playing', 'buffering']
+                              and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                          {% set ns.active = true %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.active }}
+                    voice_low: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in voice_assistants %}
+                        {% set entity_area = area_id(entity) or '' %}
+                        {% if states(entity) not in ['idle', 'unknown', 'unavailable']
+                              and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                          {% set ns.active = true %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.active }}
+                    night_override_active: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in night_mode_entities %}
+                        {% set entity_area = area_id(entity) or '' %}
+                        {% if is_state(entity, 'on')
+                              and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                          {% set ns.active = true %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.active }}
+                    list_low: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for holder in list_state_entities %}
+                        {% for raw in states(holder).split(',') %}
+                          {% set token = raw | trim %}
+                          {% if token %}
+                            {% if token | lower in ['all', '*'] %}
+                              {% set ns.active = true %}
+                            {% else %}
+                              {% set resolved_area = token if token in areas() else area_id(token) %}
+                              {% if bar_area != '' and resolved_area == bar_area %}
+                                {% set ns.active = true %}
+                              {% endif %}
+                            {% endif %}
+                          {% endif %}
+                        {% endfor %}
+                      {% endfor %}
+                      {{ ns.active }}
+                - variables:
+                    extra_low: >-
+                      {{ binary_low or tts_low or voice_low or night_override_active or list_low }}
+                    desired_volume: >-
+                      {{ min_volume if extra_low else scheduled_volume }}
+                    current_volume: >-
+                      {{ state_attr(bar, 'volume_level') | float(-1) }}
+                    tick_can_adjust: >-
+                      {{ trigger_id != 'transition_tick' or not extra_low }}
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: >-
+                            {{ is_state(bar, 'on')
+                               and tick_can_adjust
+                               and (current_volume < 0 or (current_volume - desired_volume) | abs > 0.009) }}
+                      sequence:
+                        - action: media_player.volume_set
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ bar }}"
+                          data:
+                            volume_level: "{{ [[desired_volume, 0.0] | max, 1.0] | min | round(2) }}"
+
+  # Optional provider-agnostic content/AI hook. It is intentionally not tied to
+  # a specific camera, LLM, vision provider or service contract.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ apply_eq_follow and trigger_id == 'connected_change' }}"
+        sequence: !input ai_content_actions
+
+  # Night/EQ policy is event-driven, not continuously enforced. This is
+  # deliberate: a manual sound-mode choice is not fought until the room/content
+  # context changes again.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ trigger_id in ['startup', 'quiet_start', 'quiet_end',
+                                'night_override_change', 'connected_change',
+                                'classifier_change']
+                 or bar_became_on }}
+        sequence:
+          - repeat:
+              for_each: "{{ ultimea_players }}"
+              sequence:
+                - variables:
+                    bar: "{{ repeat.item }}"
+                    bar_area: "{{ area_id(repeat.item) or '' }}"
+                    mode_trigger_affects_bar: >-
+                      {% if trigger_id in ['startup', 'quiet_start', 'quiet_end'] %}
+                        true
+                      {% elif trigger_id == 'bar_change' %}
+                        {{ trigger_entity == bar and bar_became_on }}
+                      {% elif trigger_id in ['night_override_change', 'connected_change', 'classifier_change'] %}
+                        {% set trigger_area = area_id(trigger_entity) or '' %}
+                        {{ trigger_area == '' or (bar_area != '' and trigger_area == bar_area) }}
+                      {% else %}
+                        false
+                      {% endif %}
+                    night_override_active: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in night_mode_entities %}
+                        {% set entity_area = area_id(entity) or '' %}
+                        {% if is_state(entity, 'on')
+                              and (entity_area == '' or (bar_area != '' and entity_area == bar_area)) %}
+                          {% set ns.active = true %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.active }}
+                    current_sound_mode: "{{ state_attr(bar, 'sound_mode') or '' }}"
+                    supported_sound_modes: "{{ state_attr(bar, 'sound_mode_list') | default([], true) }}"
+                    content_text: >-
+                      {% set ns = namespace(text='') %}
+                      {% for entity in connected_media_players %}
+                        {% set entity_area = area_id(entity) or '' %}
+                        {% if entity_area == '' or (bar_area != '' and entity_area == bar_area) %}
+                          {% set ns.text = ns.text ~ ' ' ~ states(entity) %}
+                          {% for attr in ['app_name', 'media_title', 'media_series_title',
+                                          'media_album_name', 'media_artist',
+                                          'media_content_type', 'media_channel',
+                                          'media_playlist', 'source'] %}
+                            {% set value = state_attr(entity, attr) %}
+                            {% if value is not none %}
+                              {% set ns.text = ns.text ~ ' ' ~ (value | string) %}
+                            {% endif %}
+                          {% endfor %}
+                        {% endif %}
+                      {% endfor %}
+                      {% for entity in content_classifier_entities %}
+                        {% set entity_area = area_id(entity) or '' %}
+                        {% if entity_area == '' or (bar_area != '' and entity_area == bar_area) %}
+                          {% set ns.text = ns.text ~ ' ' ~ states(entity) %}
+                          {% for attr in ['classification', 'content_type', 'label', 'result'] %}
+                            {% set value = state_attr(entity, attr) %}
+                            {% if value is not none %}
+                              {% set ns.text = ns.text ~ ' ' ~ (value | string) %}
+                            {% endif %}
+                          {% endfor %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.text | lower }}
+                - variables:
+                    night_requested: "{{ in_quiet_hours or night_override_active }}"
+                    eq_candidate: >-
+                      {% set haystack = content_text | lower %}
+                      {% set ns = namespace(mode='') %}
+                      {% for item in [
+                          ('Game', game_keywords),
+                          ('Sport', sport_keywords),
+                          ('Voice', voice_keywords),
+                          ('Music', music_keywords),
+                          ('Movie', movie_keywords)
+                        ] %}
+                        {% if ns.mode == '' %}
+                          {% for raw in item[1].split(',') %}
+                            {% set keyword = raw | trim | lower %}
+                            {% if keyword and keyword in haystack %}
+                              {% set ns.mode = item[0] %}
+                            {% endif %}
+                          {% endfor %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.mode if ns.mode else eq_fallback_mode }}
+                - choose:
+                    - conditions:
+                        - condition: template
+                          value_template: "{{ is_state(bar, 'on') and mode_trigger_affects_bar }}"
+                      sequence:
+                        - choose:
+                            - conditions:
+                                - condition: template
+                                  value_template: >-
+                                    {{ apply_night_mode
+                                       and night_requested
+                                       and trigger_id in ['startup', 'quiet_start',
+                                                          'night_override_change', 'bar_change']
+                                       and 'Night' in supported_sound_modes
+                                       and current_sound_mode != 'Night' }}
+                              sequence:
+                                - action: media_player.select_sound_mode
+                                  continue_on_error: true
+                                  target:
+                                    entity_id: "{{ bar }}"
+                                  data:
+                                    sound_mode: Night
+                            - conditions:
+                                - condition: template
+                                  value_template: >-
+                                    {{ not (apply_night_mode and night_requested)
+                                       and apply_eq_follow
+                                       and eq_candidate != 'No change'
+                                       and eq_candidate in supported_sound_modes
+                                       and current_sound_mode != eq_candidate }}
+                              sequence:
+                                - action: media_player.select_sound_mode
+                                  continue_on_error: true
+                                  target:
+                                    entity_id: "{{ bar }}"
+                                  data:
+                                    sound_mode: "{{ eq_candidate }}"
+                            - conditions:
+                                - condition: template
+                                  value_template: >-
+                                    {{ not (apply_night_mode and night_requested)
+                                       and apply_night_mode
+                                       and current_sound_mode == 'Night'
+                                       and normal_sound_mode != 'No change'
+                                       and normal_sound_mode in supported_sound_modes }}
+                              sequence:
+                                - action: media_player.select_sound_mode
+                                  continue_on_error: true
+                                  target:
+                                    entity_id: "{{ bar }}"
+                                  data:
+                                    sound_mode: "{{ normal_sound_mode }}"
+
+mode: queued
+max: 20
+max_exceeded: silent
