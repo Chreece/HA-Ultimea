@@ -4,6 +4,21 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.09.30.1
+
+### Changed
+
+- Quiet-hour fades now respect manual volume changes directionally instead of aborting the whole fade.
+- Before quiet hours, manually raising volume holds that value and can learn it as the new minimum; manually lowering volume is held until the scheduled fade itself needs to go lower.
+- After quiet hours, manually raising volume is held until the scheduled fade itself needs to go higher; manually lowering volume holds that value and can learn it as the new maximum/zone target.
+- Active fades now re-read current minimum and maximum helpers on every five-second step, so newly learned endpoints take effect immediately inside the already-running transition.
+- Direct low-volume conditions such as TTS/Assist remain authoritative while active.
+
+### Fixed
+
+- Prevented an active quiet-hour fade from continuing to use stale min/max endpoints after the user changes and learns a new endpoint.
+- Preserved the existing three-second settled manual-learning behavior and learning-echo suppression during directional fade control.
+
 ## 2026.09.30
 
 ### Added
