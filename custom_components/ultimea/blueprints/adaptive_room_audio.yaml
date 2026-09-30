@@ -22,6 +22,13 @@ blueprint:
     Home Assistant stores the selected entity ID. Exactly one selector must match
     a soundbar area, so unassigned or ambiguous selectors never act globally.
 
+    Optional conditional source routing can watch selected entities whose state,
+    or explicitly named attributes, contain room/area names, area IDs or entity
+    IDs. When a token resolves to a soundbar's Home Assistant area, that bar
+    switches to the configured source. A room match has priority over the normal
+    area-paired audio-input selector; when the match disappears, the selector can
+    take over again. The special values `all` and `*` match every selected bar.
+
     Optional per-zone normal-volume entities use the same area matching. Exactly
     one numeric entity in a soundbar's area overrides the global maximum/normal
     volume for that soundbar. An input_number helper therefore gives that zone its
@@ -75,6 +82,46 @@ blueprint:
                 - domain:
                     - input_select
                     - select
+        conditional_source_room_entities:
+          name: Conditional source room entities (optional)
+          description: >-
+            Select entities whose state identifies the room(s) that should switch
+            source. Values may be a single Home Assistant area name/ID/entity ID
+            or a comma-separated list. The optional attribute names below can be
+            read in addition to the state. Room matches are compared with each
+            ULTIMEA soundbar's Home Assistant area.
+          default: []
+          selector:
+            entity:
+              multiple: true
+        conditional_source_room_attributes:
+          name: Conditional source room attribute name(s) (optional)
+          description: >-
+            Optional comma-separated attribute names to read from each selected
+            room entity in addition to its state. Each attribute may contain one
+            room, a comma-separated string, or a list. Leave empty to use state
+            only. Only explicitly named attributes are read, avoiding accidental
+            matches from unrelated attributes such as friendly_name.
+          default: ""
+          selector:
+            text: {}
+        conditional_source_target:
+          name: Source when room matches
+          description: >-
+            Source selected on a soundbar when the room entity resolves to that
+            soundbar's Home Assistant area. No change disables conditional source
+            routing while preserving the normal area-paired selector behavior.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - eARC
+                - HDMI
+                - Optical
+                - AUX
+                - Bluetooth
+                - USB
         min_volume_value:
           name: Minimum volume
           description: >-
@@ -406,6 +453,9 @@ blueprint:
 variables:
   ultimea_players: !input ultimea_players
   audio_input_selectors: !input audio_input_selectors
+  conditional_source_room_entities: !input conditional_source_room_entities
+  conditional_source_room_attributes: !input conditional_source_room_attributes
+  conditional_source_target: !input conditional_source_target
   min_volume_value: !input min_volume_value
   min_volume_source_input: !input min_volume_helper
   max_volume_value: !input max_volume_value
@@ -485,6 +535,9 @@ triggers:
   - trigger: state
     entity_id: !input audio_input_selectors
     id: audio_input_change
+  - trigger: state
+    entity_id: !input conditional_source_room_entities
+    id: conditional_source_room_change
   - trigger: state
     entity_id: !input low_volume_binary_entities
     id: low_binary_change
@@ -616,6 +669,52 @@ actions:
                   {% endif %}
                 {% endfor %}
               {% endif %}
+            {% endfor %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.area_ids | unique | list }}
+      conditional_source_area_ids: >-
+        {% set ns = namespace(area_ids=[]) %}
+        {% set holders = [conditional_source_room_entities]
+           if conditional_source_room_entities is string
+           else conditional_source_room_entities %}
+        {% set attr_names = conditional_source_room_attributes.split(',')
+           | map('trim') | reject('equalto', '') | list %}
+        {% for holder in holders %}
+          {% set obj = expand(holder) | first %}
+          {% if obj is not none %}
+            {% set values = namespace(items=[obj.state]) %}
+            {% for attr_name in attr_names %}
+              {% set attr_value = obj.attributes.get(attr_name) %}
+              {% if attr_value is string %}
+                {% set values.items = values.items + attr_value.split(',') %}
+              {% elif attr_value is iterable
+                    and attr_value is not string
+                    and attr_value is not mapping %}
+                {% set values.items = values.items + (attr_value | list) %}
+              {% endif %}
+            {% endfor %}
+            {% for raw in values.items %}
+              {% for piece in (raw | string).split(',') %}
+                {% set token = piece | trim %}
+                {% if token %}
+                  {% if token | lower in ['all', '*'] %}
+                    {% set ns.area_ids = ns.area_ids + ['*'] %}
+                  {% else %}
+                    {% set resolved = token if token in areas() else area_id(token) %}
+                    {% if resolved %}
+                      {% set ns.area_ids = ns.area_ids + [resolved] %}
+                    {% else %}
+                      {% for candidate in areas() %}
+                        {% if (area_name(candidate) | default('', true) | string | lower)
+                              == (token | lower) %}
+                          {% set ns.area_ids = ns.area_ids + [candidate] %}
+                        {% endif %}
+                      {% endfor %}
+                    {% endif %}
+                  {% endif %}
+                {% endif %}
+              {% endfor %}
             {% endfor %}
           {% endif %}
         {% endfor %}
@@ -1232,15 +1331,19 @@ actions:
                                 then:
                                   - delay: "00:00:05"
 
-  # Optional audio-input follow. Selectors are paired strictly by Home Assistant
-  # area. The UI entity picker exposes friendly labels but stores stable entity IDs.
-  # Unassigned selectors and ambiguous same-area matches are deliberately ignored.
+  # Optional source routing. The normal audio-input selector remains area-local,
+  # while conditional routing can derive active rooms from another entity's state
+  # or explicitly named attributes. A room match has priority over the selector.
+  # When a match disappears, a configured selector can restore the area's baseline.
   - choose:
       - conditions:
           - condition: template
             value_template: >-
-              {{ (audio_input_selectors | length > 0)
-                 and (trigger_id in ['startup', 'audio_input_change']
+              {{ ((audio_input_selectors | length > 0)
+                   or ((conditional_source_room_entities | length > 0)
+                       and conditional_source_target != 'No change'))
+                 and (trigger_id in ['startup', 'audio_input_change',
+                                     'conditional_source_room_change']
                       or bar_became_on) }}
         sequence:
           - repeat:
@@ -1257,6 +1360,8 @@ actions:
                       {% elif trigger_id == 'audio_input_change' %}
                         {% set trigger_area = area_id(trigger_entity) or '' %}
                         {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
+                      {% elif trigger_id == 'conditional_source_room_change' %}
+                        true
                       {% else %}
                         false
                       {% endif %}
@@ -1275,10 +1380,10 @@ actions:
                     audio_selector: >-
                       {{ matching_audio_selectors[0]
                          if matching_audio_selectors | length == 1 else '' }}
-                    raw_requested_source: >-
+                    raw_selector_source: >-
                       {{ states(audio_selector) | trim if audio_selector else '' }}
-                    requested_source: >-
-                      {% set raw = raw_requested_source | trim %}
+                    selector_requested_source: >-
+                      {% set raw = raw_selector_source | trim %}
                       {% set key = raw | lower | replace(' ', '') | replace('-', '') | replace('_', '') %}
                       {% if key in ['earc', 'arc', 'audioreturnchannel', 'enhancedreturnchannel'] %}
                         eARC
@@ -1297,6 +1402,15 @@ actions:
                       {% else %}
                         {{ raw }}
                       {% endif %}
+                    conditional_source_matches_bar: >-
+                      {{ conditional_source_target != 'No change'
+                         and ('*' in conditional_source_area_ids
+                              or (bar_area != ''
+                                  and bar_area in conditional_source_area_ids)) }}
+                    requested_source: >-
+                      {{ conditional_source_target
+                         if conditional_source_matches_bar
+                         else selector_requested_source }}
                     current_source: "{{ state_attr(bar, 'source') or '' }}"
                     supported_sources: "{{ state_attr(bar, 'source_list') | default([], true) }}"
                 - choose:
@@ -1305,7 +1419,6 @@ actions:
                           value_template: >-
                             {{ is_state(bar, 'on')
                                and source_trigger_affects_bar
-                               and audio_selector != ''
                                and requested_source != ''
                                and requested_source in supported_sources
                                and current_source != requested_source }}
