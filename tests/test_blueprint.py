@@ -167,7 +167,8 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "trigger: time_pattern" not in text
     assert "transition_before_start" in text
     assert "trigger_variables:" in text
-    assert "fade_interrupted_bars" in text
+    assert "fade_held_bars" in text
+    assert "fade_endpoint_stop_bars" in text
     assert "fade_recent_policy_change" in text
     assert "mode: parallel" in text
     assert "manual_differs_from_expected" in text
@@ -223,8 +224,8 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "bar_max_volume" in text
     assert "[zone_max_candidate, max_volume] | min" in text
     assert "[manual_zone_max_candidate, max_volume] | min" in text
-    assert "[fade_zone_max_candidate, max_volume] | min" in text
-    assert "[final_zone_max_candidate, max_volume] | min" in text
+    assert "[fade_zone_max_candidate, fade_live_global_max] | min" in text
+    assert "[final_zone_max_candidate, final_live_global_max] | min" in text
     assert "bar_scheduled_volume" in text
     assert "bar_source_change" in text
     assert "source_effective_max" in text
@@ -243,6 +244,19 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "trigger.to_state.context.parent_id == obj.context.id" in text
     assert "delay: \"00:00:05\"" in text
     assert "manual_in_time_transition" in text
+    assert "manual_transition_learns_min" in text
+    assert "manual_transition_learns_max" in text
+    assert "manual_should_learn_endpoint" in text
+    assert "manual_user_raised" in text
+    assert "manual_user_lowered" in text
+    assert "fade_live_min_volume" in text
+    assert "fade_live_global_max" in text
+    assert "fade_new_manual_hold" in text
+    assert "fade_new_endpoint_stop" in text
+    assert "fade_hold_should_release" in text
+    assert "fade_scheduled_volume < fade_current_volume - 0.009" in text
+    assert "fade_scheduled_volume > fade_current_volume + 0.009" in text
+    assert "bar not in fade_endpoint_stop_bars" in text
     assert "area_id(" in text
     assert "sound_mode_list" in text
     assert "quiet_hours_enabled" in text
