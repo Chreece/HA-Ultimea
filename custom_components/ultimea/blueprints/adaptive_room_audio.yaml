@@ -22,15 +22,13 @@ blueprint:
     Home Assistant stores the selected entity ID. Exactly one selector must match
     a soundbar area, so unassigned or ambiguous selectors never act globally.
 
-    Optional conditional source routing can watch selected entities whose state,
-    or explicitly named attributes, contain room/area names, area IDs or entity
-    IDs. When a token resolves to a soundbar's Home Assistant area, that bar
-    switches to the configured source. It can also watch selected media players
-    and switch the soundbar in the same Home Assistant area while that player is
-    playing or buffering. Active playback has priority over a room-token match,
-    and a room-token match has priority over the normal area-paired audio-input
-    selector. When conditions clear, the selector can take over again. The special
-    values `all` and `*` match every selected bar for the room-token rule.
+    Optional media-player source routing maps media players to ULTIMEA inputs.
+    When a configured media player is playing, the soundbar in the same Home
+    Assistant area switches to that player's mapped source. If multiple mapped
+    media players in one area are playing, the one that most recently entered the
+    playing state wins. When it stops, the next most-recent still-playing player
+    takes over. If none are playing, the normal area-paired audio-input selector
+    remains the fallback.
 
     Optional per-zone normal-volume entities use the same area matching. Exactly
     one numeric entity in a soundbar's area overrides the global maximum/normal
@@ -85,76 +83,78 @@ blueprint:
                 - domain:
                     - input_select
                     - select
-        conditional_source_room_entities:
-          name: Conditional source room entities (optional)
+        source_players_earc:
+          name: Media players → eARC
           description: >-
-            Select entities whose state identifies the room(s) that should switch
-            source. Values may be a single Home Assistant area name/ID/entity ID
-            or a comma-separated list. The optional attribute names below can be
-            read in addition to the state. Room matches are compared with each
-            ULTIMEA soundbar's Home Assistant area.
-          default: []
-          selector:
-            entity:
-              multiple: true
-        conditional_source_room_attributes:
-          name: Conditional source room attribute name(s) (optional)
-          description: >-
-            Optional comma-separated attribute names to read from each selected
-            room entity in addition to its state. Each attribute may contain one
-            room, a comma-separated string, or a list. Leave empty to use state
-            only. Only explicitly named attributes are read, avoiding accidental
-            matches from unrelated attributes such as friendly_name.
-          default: ""
-          selector:
-            text: {}
-        conditional_source_target:
-          name: Source when room matches
-          description: >-
-            Source selected on a soundbar when the room entity resolves to that
-            soundbar's Home Assistant area. No change disables conditional source
-            routing while preserving the normal area-paired selector behavior.
-          default: No change
-          selector:
-            select:
-              options:
-                - No change
-                - eARC
-                - HDMI
-                - Optical
-                - AUX
-                - Bluetooth
-                - USB
-        conditional_source_media_players:
-          name: Conditional source media players (optional)
-          description: >-
-            Select media players that should switch the ULTIMEA bar in the same
-            Home Assistant area while they are playing or buffering. Media players
-            without an area are ignored so this rule never acts globally.
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to eARC while playing. Put each media player in
+            only one source group.
           default: []
           selector:
             entity:
               multiple: true
               filter:
                 - domain: media_player
-        conditional_media_source_target:
-          name: Source while matching media player plays
+        source_players_hdmi:
+          name: Media players → HDMI
           description: >-
-            Source selected on the ULTIMEA soundbar in the same area while one of
-            the selected media players is playing or buffering. This rule has
-            priority over the room-name conditional rule below it. No change
-            disables this playback rule.
-          default: No change
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to HDMI while playing. Put each media player in
+            only one source group.
+          default: []
           selector:
-            select:
-              options:
-                - No change
-                - eARC
-                - HDMI
-                - Optical
-                - AUX
-                - Bluetooth
-                - USB
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        source_players_optical:
+          name: Media players → Optical
+          description: >-
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to Optical while playing. Put each media player
+            in only one source group.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        source_players_aux:
+          name: Media players → AUX
+          description: >-
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to AUX while playing. Put each media player in
+            only one source group.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        source_players_bluetooth:
+          name: Media players → Bluetooth
+          description: >-
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to Bluetooth while playing. Put each media player
+            in only one source group.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        source_players_usb:
+          name: Media players → USB
+          description: >-
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to USB while playing. Put each media player in
+            only one source group.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
         min_volume_value:
           name: Minimum volume
           description: >-
@@ -486,11 +486,12 @@ blueprint:
 variables:
   ultimea_players: !input ultimea_players
   audio_input_selectors: !input audio_input_selectors
-  conditional_source_room_entities: !input conditional_source_room_entities
-  conditional_source_room_attributes: !input conditional_source_room_attributes
-  conditional_source_target: !input conditional_source_target
-  conditional_source_media_players: !input conditional_source_media_players
-  conditional_media_source_target: !input conditional_media_source_target
+  source_players_earc: !input source_players_earc
+  source_players_hdmi: !input source_players_hdmi
+  source_players_optical: !input source_players_optical
+  source_players_aux: !input source_players_aux
+  source_players_bluetooth: !input source_players_bluetooth
+  source_players_usb: !input source_players_usb
   min_volume_value: !input min_volume_value
   min_volume_source_input: !input min_volume_helper
   max_volume_value: !input max_volume_value
@@ -571,11 +572,23 @@ triggers:
     entity_id: !input audio_input_selectors
     id: audio_input_change
   - trigger: state
-    entity_id: !input conditional_source_room_entities
-    id: conditional_source_room_change
+    entity_id: !input source_players_earc
+    id: source_media_earc
   - trigger: state
-    entity_id: !input conditional_source_media_players
-    id: conditional_source_media_change
+    entity_id: !input source_players_hdmi
+    id: source_media_hdmi
+  - trigger: state
+    entity_id: !input source_players_optical
+    id: source_media_optical
+  - trigger: state
+    entity_id: !input source_players_aux
+    id: source_media_aux
+  - trigger: state
+    entity_id: !input source_players_bluetooth
+    id: source_media_bluetooth
+  - trigger: state
+    entity_id: !input source_players_usb
+    id: source_media_usb
   - trigger: state
     entity_id: !input low_volume_binary_entities
     id: low_binary_change
@@ -711,53 +724,8 @@ actions:
           {% endif %}
         {% endfor %}
         {{ ns.area_ids | unique | list }}
-      conditional_source_area_ids: >-
-        {% set ns = namespace(area_ids=[]) %}
-        {% set holders = [conditional_source_room_entities]
-           if conditional_source_room_entities is string
-           else conditional_source_room_entities %}
-        {% set attr_names = conditional_source_room_attributes.split(',')
-           | map('trim') | reject('equalto', '') | list %}
-        {% for holder in holders %}
-          {% set obj = expand(holder) | first %}
-          {% if obj is not none %}
-            {% set values = namespace(items=[obj.state]) %}
-            {% for attr_name in attr_names %}
-              {% set attr_value = obj.attributes.get(attr_name) %}
-              {% if attr_value is string %}
-                {% set values.items = values.items + attr_value.split(',') %}
-              {% elif attr_value is iterable
-                    and attr_value is not string
-                    and attr_value is not mapping %}
-                {% set values.items = values.items + (attr_value | list) %}
-              {% endif %}
-            {% endfor %}
-            {% for raw in values.items %}
-              {% for piece in (raw | string).split(',') %}
-                {% set token = piece | trim %}
-                {% if token %}
-                  {% if token | lower in ['all', '*'] %}
-                    {% set ns.area_ids = ns.area_ids + ['*'] %}
-                  {% else %}
-                    {% set resolved = token if token in areas() else area_id(token) %}
-                    {% if resolved %}
-                      {% set ns.area_ids = ns.area_ids + [resolved] %}
-                    {% else %}
-                      {% for candidate in areas() %}
-                        {% if (area_name(candidate) | default('', true) | string | lower)
-                              == (token | lower) %}
-                          {% set ns.area_ids = ns.area_ids + [candidate] %}
-                        {% endif %}
-                      {% endfor %}
-                    {% endif %}
-                  {% endif %}
-                {% endif %}
-              {% endfor %}
-            {% endfor %}
-          {% endif %}
-        {% endfor %}
-        {{ ns.area_ids | unique | list }}
-
+  - variables:
+      quiet_hours_enabled: "{{ quiet_start_seconds != quiet_end_seconds }}"
   - variables:
       quiet_hours_enabled: "{{ quiet_start_seconds != quiet_end_seconds }}"
       in_quiet_hours: >-
@@ -1369,24 +1337,25 @@ actions:
                                 then:
                                   - delay: "00:00:05"
 
-  # Optional source routing. The normal audio-input selector remains area-local.
-  # Conditional routing can derive active rooms from another entity's state or
-  # explicitly named attributes, and can react to a media player actively playing
-  # in the same area. Playback has priority over room matching, which has priority
-  # over the selector. When conditions clear, a configured selector can restore
-  # the area's baseline.
+  # Optional media-player source routing. A playing media player only affects
+  # the ULTIMEA soundbar in the same Home Assistant area. If several mapped
+  # players are playing there, the player with the newest last_changed timestamp
+  # wins. When no mapped player is playing, the normal area selector is the fallback.
   - choose:
       - conditions:
           - condition: template
             value_template: >-
               {{ ((audio_input_selectors | length > 0)
-                   or ((conditional_source_room_entities | length > 0)
-                       and conditional_source_target != 'No change')
-                   or ((conditional_source_media_players | length > 0)
-                       and conditional_media_source_target != 'No change'))
+                   or (source_players_earc | length > 0)
+                   or (source_players_hdmi | length > 0)
+                   or (source_players_optical | length > 0)
+                   or (source_players_aux | length > 0)
+                   or (source_players_bluetooth | length > 0)
+                   or (source_players_usb | length > 0))
                  and (trigger_id in ['startup', 'audio_input_change',
-                                     'conditional_source_room_change',
-                                     'conditional_source_media_change']
+                                     'source_media_earc', 'source_media_hdmi',
+                                     'source_media_optical', 'source_media_aux',
+                                     'source_media_bluetooth', 'source_media_usb']
                       or bar_became_on) }}
         sequence:
           - repeat:
@@ -1403,9 +1372,9 @@ actions:
                       {% elif trigger_id == 'audio_input_change' %}
                         {% set trigger_area = area_id(trigger_entity) or '' %}
                         {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
-                      {% elif trigger_id == 'conditional_source_room_change' %}
-                        true
-                      {% elif trigger_id == 'conditional_source_media_change' %}
+                      {% elif trigger_id in ['source_media_earc', 'source_media_hdmi',
+                                             'source_media_optical', 'source_media_aux',
+                                             'source_media_bluetooth', 'source_media_usb'] %}
                         {% set trigger_area = area_id(trigger_entity) or '' %}
                         {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
                       {% else %}
@@ -1448,33 +1417,83 @@ actions:
                       {% else %}
                         {{ raw }}
                       {% endif %}
-                    conditional_source_matches_bar: >-
-                      {{ conditional_source_target != 'No change'
-                         and ('*' in conditional_source_area_ids
-                              or (bar_area != ''
-                                  and bar_area in conditional_source_area_ids)) }}
-                    playing_media_matches_bar: >-
-                      {% set ns = namespace(active=false) %}
-                      {% set players = [conditional_source_media_players]
-                         if conditional_source_media_players is string
-                         else conditional_source_media_players %}
-                      {% if bar_area != '' and conditional_media_source_target != 'No change' %}
-                        {% for entity in players %}
-                          {% if (area_id(entity) or '') == bar_area
-                                and states(entity) in ['playing', 'buffering'] %}
-                            {% set ns.active = true %}
+                    latest_playing_source: >-
+                      {% set ns = namespace(source='', changed=0) %}
+                      {% set players = [source_players_earc] if source_players_earc is string else source_players_earc %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'eARC' %}
+                            {% set ns.changed = changed %}
                           {% endif %}
-                        {% endfor %}
-                      {% endif %}
-                      {{ ns.active }}
+                        {% endif %}
+                      {% endfor %}
+                      {% set players = [source_players_hdmi] if source_players_hdmi is string else source_players_hdmi %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'HDMI' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {% set players = [source_players_optical] if source_players_optical is string else source_players_optical %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'Optical' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {% set players = [source_players_aux] if source_players_aux is string else source_players_aux %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'AUX' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {% set players = [source_players_bluetooth] if source_players_bluetooth is string else source_players_bluetooth %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'Bluetooth' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {% set players = [source_players_usb] if source_players_usb is string else source_players_usb %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'USB' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.source }}
                     requested_source: >-
-                      {% if playing_media_matches_bar %}
-                        {{ conditional_media_source_target }}
-                      {% elif conditional_source_matches_bar %}
-                        {{ conditional_source_target }}
-                      {% else %}
-                        {{ selector_requested_source }}
-                      {% endif %}
+                      {{ latest_playing_source if latest_playing_source else selector_requested_source }}
                     current_source: "{{ state_attr(bar, 'source') or '' }}"
                     supported_sources: "{{ state_attr(bar, 'source_list') | default([], true) }}"
                 - choose:
