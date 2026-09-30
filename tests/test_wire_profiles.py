@@ -36,3 +36,32 @@ def test_writable_ha_surfaces_are_profile_gated():
     for filename in ("media_player.py", "select.py", "number.py", "switch.py", "button.py"):
         source = (ROOT / "custom_components" / "ultimea" / filename).read_text(encoding="utf-8")
         assert "can_write_feature" in source
+
+
+def test_d70_profile_is_evidence_limited():
+    profiles = (ROOT / "custom_components" / "ultimea" / "profiles.py").read_text(encoding="utf-8")
+    assert 'POSEIDON_D70_MODEL = "Poseidon D70"' in profiles
+    assert "D70_WIRE_FEATURES" in profiles
+    assert "Feature.VOLUME: FeatureWireSpec(write=_control(CMD_VOLUME))" in profiles
+    assert "Feature.SOURCE: FeatureWireSpec(write=_control(CMD_SOURCE))" in profiles
+    assert "Source.EARC: 0x00" in profiles
+    assert "Source.OPTICAL: 0x01" in profiles
+    assert "Source.AUX: 0x03" in profiles
+    d70_map = profiles.split("D70_SOURCE_CONTROL_VALUES", 1)[1].split("D70_SOURCE_NAMES", 1)[0]
+    assert "Source.USB" not in d70_map
+    assert "Source.BLUETOOTH" not in d70_map
+    assert 'Source.EARC: "ARC"' in profiles
+
+
+def test_source_values_and_labels_are_profile_specific():
+    profiles = (ROOT / "custom_components" / "ultimea" / "profiles.py").read_text(encoding="utf-8")
+    media_player = (ROOT / "custom_components" / "ultimea" / "media_player.py").read_text(encoding="utf-8")
+    device = (ROOT / "custom_components" / "ultimea" / "device.py").read_text(encoding="utf-8")
+    assert "source_control_values" in profiles
+    assert "source_info_values" in profiles
+    assert "source_options_for_model" in profiles
+    assert "source_name_for_model" in media_player
+    assert "source_for_name_for_model" in media_player
+    assert "source_value_for_model" in device
+    assert "decode_source_value(self.identity.model, data[0], info=False)" in device
+    assert "decode_source_value(self.identity.model, data[0], info=True)" in device
