@@ -6,7 +6,15 @@ The project uses calendar versioning for public releases: `YYYY.MM.DD` with patc
 
 ## 2026.09.08.5
 
+### Added
+
+- Added an evidence-limited Poseidon D70 profile from issue #4 captures. The profile exposes proven absolute-volume writes and ARC/Optical/AUX source selection only; uncaptured D70 setters remain disabled.
+- Added model-specific source value/label maps so D70 ARC (`02:02 00`) does not alter the D80 eARC setter (`02:02 10`).
+
 ### Fixed
+
+- INFO source replies now decode through the INFO enum rather than the CONTROL source enum, fixing `01:06 00` return-channel state decoding.
+- Adaptive source routing maps its existing eARC choice to ARC automatically when a target soundbar exposes ARC instead of eARC.
 
 - Managed Adaptive Room Audio blueprint updates now reload the live Home Assistant automation definition after startup when the Automation integration had already expanded an older copy. Removed triggers such as the old permanent five-second `transition_tick` therefore cannot remain active after an integration update just because of component setup order.
 - Existing automations that reference the ULTIMEA blueprint are reloaded by their automation ID when possible. A brand-new blueprint installation falls back to one full automation reload because automations that previously failed on a missing blueprint cannot be discovered by blueprint reference.

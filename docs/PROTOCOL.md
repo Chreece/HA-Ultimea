@@ -99,6 +99,35 @@ Responsive INFO commands `0B`, `10`, `11` and `12` remain unnamed and are not ex
 
 `02:16` changes the D80 state but does not provide a dependable same-command `02:16` echo. The verified implementation writes `02:16` and then reads authoritative `01:18` until the requested state is confirmed. Unrelated `02:0C` pushes may occur during this sequence and must not be treated as the X-Upmix ACK.
 
+## Poseidon D70 capture-backed subset
+
+Issue #4 provides third-party BLE captures for the Poseidon D70. These frames are
+treated as model-specific evidence and do not modify the D80 enum globally.
+
+Proven CONTROL frames:
+
+| Semantic control | Command | Captured payload |
+|---|---:|---:|
+| Source: ARC | `02` | `00` |
+| Source: Optical | `02` | `01` |
+| Source: AUX | `02` | `03` |
+| Volume | `03` | one-byte absolute value (`00`–`64` observed) |
+
+Examples supplied by the reporter:
+
+```text
+aa 01 00 02 03 64 13   volume 100
+aa 01 00 02 03 00 af   volume 0
+aa 01 00 02 03 0b ba   volume 11
+aa 01 00 02 02 00 ae   ARC
+aa 01 00 02 02 01 af   Optical
+aa 01 00 02 02 03 b1   AUX
+```
+
+No D70 INFO-source capture has been supplied yet. Generic INFO decoding remains
+read-only, while source/volume writes are gated by the D70 profile. Bluetooth,
+USB, power, mute, sound-mode/EQ and advanced setters remain disabled until captured.
+
 ## Custom EQ and Custom Style
 
 `02:04` is overloaded for standard sound modes and the D80 custom sound profiles.

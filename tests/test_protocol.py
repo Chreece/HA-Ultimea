@@ -170,6 +170,14 @@ def test_hardware_getter_map_is_preserved():
         assert expected in const_py
 
 
+def test_info_source_decoder_does_not_use_control_enum():
+    device_py = (ROOT / "custom_components" / "ultimea" / "device.py").read_text(encoding="utf-8")
+    profiles_py = (ROOT / "custom_components" / "ultimea" / "profiles.py").read_text(encoding="utf-8")
+    assert "decode_source_value(self.identity.model, data[0], info=True)" in device_py
+    assert "INFO_VALUE_TO_SOURCE.get(value)" in profiles_py
+    assert "decode_source_value(self.identity.model, d[0], info=True)" in device_py
+
+
 def test_advanced_entity_platforms_are_forwarded():
     init_py = (ROOT / "custom_components" / "ultimea" / "__init__.py").read_text(encoding="utf-8")
     for platform in ("Platform.NUMBER", "Platform.SWITCH", "Platform.SENSOR"):

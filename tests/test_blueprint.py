@@ -204,6 +204,9 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "matching_audio_selectors" in text
     assert "selector_requested_source" in text
     assert "requested_source" in text
+    assert "effective_requested_source" in text
+    assert "requested_source == 'eARC'" in text
+    assert "'ARC' in supported_sources" in text
     assert "source_list" in text
     assert "bar_volume_trigger_is_current" in text
     assert "guarded_handoff_required" in text

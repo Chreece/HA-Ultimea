@@ -20,7 +20,12 @@ from .const import Feature, SoundMode, Source
 from .device import UltimeaError
 from .entity import UltimeaEntity
 from .eq_style import identify_style_preset
-from .profiles import can_write_feature
+from .profiles import (
+    can_write_feature,
+    source_for_name_for_model,
+    source_name_for_model,
+    source_options_for_model,
+)
 
 SOURCE_NAMES = {
     Source.EARC: "eARC",
@@ -30,7 +35,6 @@ SOURCE_NAMES = {
     Source.BLUETOOTH: "Bluetooth",
     Source.USB: "USB",
 }
-NAME_TO_SOURCE = {value: key for key, value in SOURCE_NAMES.items()}
 SOUND_MODE_NAMES = {
     SoundMode.MOVIE: "Movie",
     SoundMode.MUSIC: "Music",
@@ -152,7 +156,9 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
 
     @property
     def source_list(self) -> list[str] | None:
-        return list(NAME_TO_SOURCE) if self._can_write(Feature.SOURCE) else None
+        if not self._can_write(Feature.SOURCE):
+            return None
+        return list(source_options_for_model(self.device.identity.model))
 
     @property
     def sound_mode_list(self) -> list[str] | None:
@@ -204,7 +210,12 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
 
     @property
     def source(self) -> str | None:
-        return SOURCE_NAMES.get(self.device.state.source)
+        if self.device.state.source is None:
+            return None
+        return source_name_for_model(
+            self.device.identity.model,
+            self.device.state.source,
+        )
 
     @property
     def sound_mode(self) -> str | None:
@@ -271,10 +282,11 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
         await self._run(self.device.async_set_mute(mute))
 
     async def async_select_source(self, source: str) -> None:
-        try:
-            target = NAME_TO_SOURCE[source]
-        except KeyError as err:
-            raise HomeAssistantError(f"Unsupported ULTIMEA source: {source}") from err
+        target = source_for_name_for_model(self.device.identity.model, source)
+        if target is None:
+            raise HomeAssistantError(
+                f"Unsupported ULTIMEA source for this model: {source}"
+            )
         await self._run(self.device.async_set_source(target))
 
     async def async_select_sound_mode(self, sound_mode: str) -> None:
