@@ -4,7 +4,9 @@ blueprint:
     Room-aware automation for ULTIMEA soundbars. It can learn a normal and quiet
     volume, lower volume during quiet hours / TTS / active binary conditions /
     Assist activity, fade only around the quiet-hours boundaries, select Night
-    mode, and follow the content playing on a connected media player.
+    mode, and follow the content playing on a connected media player. Manual
+    volume learning is debounced: the final unchanged value is learned only after
+    three seconds, so intermediate knob/button steps cannot fight the user.
 
     Minimum and maximum volume can be fixed percentages or read from optional
     numeric entities. When manual-volume learning is enabled and the selected
@@ -485,8 +487,11 @@ blueprint:
           description: >-
             When enabled, manual soundbar volume changes update the active minimum
             or maximum only when that endpoint uses a writable input_number/number
-            entity. Manual changes during a quiet-hours fade never change an
-            endpoint; they stop that fade for the affected soundbar.
+            entity. The final manual value must remain unchanged for three seconds
+            before it is learned, preventing intermediate knob/button steps from
+            triggering the old maximum again. Manual changes during a quiet-hours
+            fade never change an endpoint; they stop that fade for the affected
+            soundbar.
           default: false
           selector:
             boolean: {}
@@ -954,6 +959,10 @@ actions:
                 {% else %}
                   {{ manual_volume | round(2) }}
                 {% endif %}
+          # Debounce manual endpoint learning. Each volume event gets its own
+          # parallel run; only the run whose value is still live three seconds later
+          # is allowed to write the helper. Earlier intermediate steps therefore
+          # expire harmlessly instead of firing volume_source with stale values.
           - choose:
               - conditions:
                   - condition: template
@@ -961,28 +970,50 @@ actions:
                       {{ manual_differs_from_expected
                          and not manual_in_time_transition
                          and learn_manual_volume_changes
-                         and manual_learning_domain == 'input_number' }}
+                         and manual_learning_domain in ['input_number', 'number'] }}
                 sequence:
-                  - action: input_number.set_value
-                    continue_on_error: true
-                    target:
-                      entity_id: "{{ manual_learning_entity }}"
-                    data:
-                      value: "{{ manual_learning_value }}"
-              - conditions:
-                  - condition: template
-                    value_template: >-
-                      {{ manual_differs_from_expected
-                         and not manual_in_time_transition
-                         and learn_manual_volume_changes
-                         and manual_learning_domain == 'number' }}
-                sequence:
-                  - action: number.set_value
-                    continue_on_error: true
-                    target:
-                      entity_id: "{{ manual_learning_entity }}"
-                    data:
-                      value: "{{ manual_learning_value }}"
+                  - delay: "00:00:03"
+                  - variables:
+                      manual_settled_volume: >-
+                        {{ state_attr(manual_bar, 'volume_level') | float(-1) }}
+                      manual_volume_stable_after_delay: >-
+                        {{ manual_settled_volume >= 0
+                           and (manual_settled_volume - manual_volume) | abs <= 0.004 }}
+                      manual_settled_learning_value: >-
+                        {% if manual_learning_entity %}
+                          {% set scale = state_attr(manual_learning_entity, 'max') | float(0) %}
+                          {% set current = states(manual_learning_entity) | float(0) %}
+                          {{ (manual_settled_volume * 100
+                              if scale > 1.5 or current > 1.5
+                              else manual_settled_volume) | round(2) }}
+                        {% else %}
+                          {{ manual_settled_volume | round(2) }}
+                        {% endif %}
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: >-
+                              {{ manual_volume_stable_after_delay
+                                 and manual_learning_domain == 'input_number' }}
+                        sequence:
+                          - action: input_number.set_value
+                            continue_on_error: true
+                            target:
+                              entity_id: "{{ manual_learning_entity }}"
+                            data:
+                              value: "{{ manual_settled_learning_value }}"
+                      - conditions:
+                          - condition: template
+                            value_template: >-
+                              {{ manual_volume_stable_after_delay
+                                 and manual_learning_domain == 'number' }}
+                        sequence:
+                          - action: number.set_value
+                            continue_on_error: true
+                            target:
+                              entity_id: "{{ manual_learning_entity }}"
+                            data:
+                              value: "{{ manual_settled_learning_value }}"
           - stop: Manual ULTIMEA volume change handled without fighting the user.
 
   # Ignore unrelated ULTIMEA attribute changes. The one exception is a bar
