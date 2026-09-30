@@ -4,17 +4,31 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
-## 2026.09.08.5
+## 2026.09.30
 
 ### Added
 
-- Added an evidence-limited Poseidon D70 profile from issue #4 captures. The profile exposes proven absolute-volume writes and ARC/Optical/AUX source selection only; uncaptured D70 setters remain disabled.
-- Added model-specific source value/label maps so D70 ARC (`02:02 00`) does not alter the D80 eARC setter (`02:02 10`).
+- Added event-driven media-player source routing to Adaptive Room Audio. Media players can be mapped to eARC, HDMI, Optical, AUX, Bluetooth or USB; the most recently started mapped player wins, and one global fallback source can be selected for when none are playing.
+- Added capture-backed partial Poseidon D70 support from issue #4: absolute volume plus ARC, Optical and AUX source writes. Uncaptured D70 setters remain disabled.
+- Added model-specific source wire values and Home Assistant labels so models can safely use different source enums without changing D80 behavior.
+
+### Changed
+
+- With one selected ULTIMEA soundbar, mapped source-routing media players no longer require Home Assistant area assignment. Multiple selected bars still use areas to disambiguate the target bar.
+- Guarded handoff / restore duration `0` now truly disables the transition. Automatic restores are immediate, and a manual volume change never starts a handoff.
+- Manual min/max learning now waits for the volume to remain unchanged for three seconds before saving it. The resulting helper write is treated as a learning echo and cannot command the soundbar back.
+- Maximum volume is now a hard ceiling. Per-zone normal-volume entities may lower a zone target but can never raise it above the configured maximum.
+- Source changes now allow hardware per-source volume recall to settle briefly and then clamp only downward when the recalled volume exceeds the effective maximum; source-change handling never raises volume.
 
 ### Fixed
 
-- INFO source replies now decode through the INFO enum rather than the CONTROL source enum, fixing `01:06 00` return-channel state decoding.
-- Adaptive source routing maps its existing eARC choice to ARC automatically when a target soundbar exposes ARC instead of eARC.
+- Fixed INFO source decoding to use the INFO source enum rather than the CONTROL enum, including `01:06 00` return-channel state.
+- Adaptive source routing now translates its eARC choice to ARC automatically when the target soundbar exposes ARC instead of eARC.
+- Fixed source-routing and volume-policy interactions that could restore stale/intermediate learned volumes or a per-zone value above the configured maximum.
+
+## 2026.09.08.5
+
+### Fixed
 
 - Managed Adaptive Room Audio blueprint updates now reload the live Home Assistant automation definition after startup when the Automation integration had already expanded an older copy. Removed triggers such as the old permanent five-second `transition_tick` therefore cannot remain active after an integration update just because of component setup order.
 - Existing automations that reference the ULTIMEA blueprint are reloaded by their automation ID when possible. A brand-new blueprint installation falls back to one full automation reload because automations that previously failed on a missing blueprint cannot be discovered by blueprint reference.
