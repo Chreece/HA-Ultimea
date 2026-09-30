@@ -78,6 +78,7 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "source_players_aux",
         "source_players_bluetooth",
         "source_players_usb",
+        "source_fallback",
         "quiet_start",
         "quiet_end",
         "transition_before",
@@ -135,6 +136,17 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         assert selector["multiple"] is True
         assert selector["filter"][0]["domain"] == "media_player"
         assert inputs[key]["default"] == []
+
+    assert inputs["source_fallback"]["default"] == "No change"
+    assert inputs["source_fallback"]["selector"]["select"]["options"] == [
+        "No change",
+        "eARC",
+        "HDMI",
+        "Optical",
+        "AUX",
+        "Bluetooth",
+        "USB",
+    ]
     assert inputs["handoff_transition"]["default"]["seconds"] == 15
 
 
@@ -182,6 +194,10 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
         assert trigger_id in text
     assert "latest_playing_source" in text
     assert "as_timestamp(obj.last_changed, 0)" in text
+    assert "source_fallback" in text
+    assert "immediate_restore_required" in text
+    assert "handoff_transition_seconds <= 0" in text
+    assert "trigger_id != 'bar_volume_change'" in text
     assert "conditional_source_room_change" not in text
     assert "conditional_source_area_ids" not in text
     assert "matching_audio_selectors" in text
