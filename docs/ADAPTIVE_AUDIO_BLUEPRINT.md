@@ -113,6 +113,10 @@ by default. When enabled:
   entity when it is an `input_number` or writable `number`;
 - a manual volume change in normal operation updates the selected maximum entity
   under the same rule;
+- manual learning is **debounced for three seconds**: intermediate volume steps do
+  not write the helper. Only the final volume that remains unchanged for three
+  seconds is learned, so helper updates cannot pull the soundbar back while the
+  user is still adjusting it;
 - numeric `sensor` sources and fixed numeric values are read-only and are never
   mutated;
 - manual changes during a quiet-hours fade do not learn either endpoint. They
