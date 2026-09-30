@@ -194,6 +194,7 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
         assert trigger_id in text
     assert "latest_playing_source" in text
     assert "as_timestamp(obj.last_changed, 0)" in text
+    assert "ultimea_players is string or ultimea_players | length == 1" in text
     assert "source_fallback" in text
     assert "immediate_restore_required" in text
     assert "handoff_transition_seconds <= 0" in text
