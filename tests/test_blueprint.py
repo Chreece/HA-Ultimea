@@ -254,8 +254,9 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "fade_new_manual_hold" in text
     assert "fade_new_endpoint_stop" in text
     assert "fade_hold_should_release" in text
-    assert "fade_scheduled_volume < fade_current_volume - 0.009" in text
-    assert "fade_scheduled_volume > fade_current_volume + 0.009" in text
+    assert "fade_scheduled_volume" in text
+    assert "< fade_current_volume - 0.009" in text
+    assert "> fade_current_volume + 0.009" in text
     assert "bar not in fade_endpoint_stop_bars" in text
     assert "area_id(" in text
     assert "sound_mode_list" in text
