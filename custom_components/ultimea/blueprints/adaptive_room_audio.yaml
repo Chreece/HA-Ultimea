@@ -951,14 +951,6 @@ actions:
                    else (manual_zone_volume_entity if manual_zone_volume_entity else max_volume_entity) }}
               manual_learning_domain: >-
                 {{ manual_learning_entity.split('.', 1)[0] if manual_learning_entity else '' }}
-              manual_learning_value: >-
-                {% if manual_learning_entity %}
-                  {% set scale = state_attr(manual_learning_entity, 'max') | float(0) %}
-                  {% set current = states(manual_learning_entity) | float(0) %}
-                  {{ (manual_volume * 100 if scale > 1.5 or current > 1.5 else manual_volume) | round(2) }}
-                {% else %}
-                  {{ manual_volume | round(2) }}
-                {% endif %}
           # Debounce manual endpoint learning. Each volume event gets its own
           # parallel run; only the run whose value is still live three seconds later
           # is allowed to write the helper. Earlier intermediate steps therefore
