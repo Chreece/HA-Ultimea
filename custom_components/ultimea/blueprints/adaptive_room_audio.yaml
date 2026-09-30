@@ -912,7 +912,7 @@ actions:
                   {{ max_volume }}
                 {% endif %}
               manual_max_volume: >-
-                {{ [min_volume, manual_zone_max_candidate] | max }}
+                {{ [min_volume, [manual_zone_max_candidate, max_volume] | min] | max }}
               manual_scheduled_volume: >-
                 {% if in_quiet_hours %}
                   {{ min_volume }}
@@ -1113,7 +1113,7 @@ actions:
                         {{ max_volume }}
                       {% endif %}
                     bar_max_volume: >-
-                      {{ [min_volume, zone_max_candidate] | max }}
+                      {{ [min_volume, [zone_max_candidate, max_volume] | min] | max }}
                     bar_scheduled_volume: >-
                       {% if in_quiet_hours %}
                         {{ min_volume }}
@@ -1931,7 +1931,7 @@ actions:
                               {{ max_volume }}
                             {% endif %}
                           fade_bar_max_volume: >-
-                            {{ [min_volume, fade_zone_max_candidate] | max }}
+                            {{ [min_volume, [fade_zone_max_candidate, max_volume] | min] | max }}
                           fade_scheduled_volume: >-
                             {% if fade_phase == 'before' and transition_before_seconds > 0 %}
                               {% set progress = 1 - (fade_seconds_until_start / transition_before_seconds) %}
@@ -2115,7 +2115,7 @@ actions:
                             {{ max_volume }}
                           {% endif %}
                         final_target: >-
-                          {{ [min_volume, final_zone_max_candidate] | max }}
+                          {{ [min_volume, [final_zone_max_candidate, max_volume] | min] | max }}
                         final_current: >-
                           {{ state_attr(bar, 'volume_level') | float(-1) }}
                     - if:
