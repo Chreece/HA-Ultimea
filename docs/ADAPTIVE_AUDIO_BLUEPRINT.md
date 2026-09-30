@@ -115,8 +115,11 @@ by default. When enabled:
   under the same rule;
 - manual learning is **debounced for three seconds**: intermediate volume steps do
   not write the helper. Only the final volume that remains unchanged for three
-  seconds is learned, so helper updates cannot pull the soundbar back while the
-  user is still adjusting it;
+  seconds is learned;
+- the helper update produced by that learning is treated as a **learning echo**.
+  It updates the saved min/max value but is not allowed to command the soundbar
+  back to the previous volume. Deliberate helper changes from outside the learning
+  path remain valid policy inputs;
 - numeric `sensor` sources and fixed numeric values are read-only and are never
   mutated;
 - manual changes during a quiet-hours fade do not learn either endpoint. They
