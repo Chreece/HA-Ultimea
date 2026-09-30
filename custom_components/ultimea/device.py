@@ -50,14 +50,12 @@ from .const import (
     PROMPT_SOUND_TO_VALUE,
     SCREEN_TIMEOUT_TO_VALUE,
     SOUND_MODE_TO_VALUE,
-    SOURCE_TO_VALUE,
     TRANSPORT_COMMON,
     TRANSPORT_UUIDS,
     VALUE_TO_BRIGHTNESS,
     VALUE_TO_PROMPT_SOUND,
     VALUE_TO_SCREEN_TIMEOUT,
     VALUE_TO_SOUND_MODE,
-    VALUE_TO_SOURCE,
     Brightness,
     Feature,
     PromptSound,
@@ -66,7 +64,7 @@ from .const import (
     Source,
 )
 from .models import UltimeaCapabilities, UltimeaIdentity, UltimeaState
-from .profiles import profile_for_model
+from .profiles import decode_source_value, profile_for_model, source_value_for_model
 from .protocol import UltimeaFrame, build_command, decode_ascii, iter_frames
 
 _LOGGER = logging.getLogger(__name__)
@@ -562,7 +560,7 @@ class UltimeaDevice:
             return True
         if frame.command == CMD_SOURCE and len(data) == 1:
             self.state.raw_source = data[0]
-            source = VALUE_TO_SOURCE.get(data[0])
+            source = decode_source_value(self.identity.model, data[0], info=False)
             if source is not None:
                 self.state.source = source
             return True
@@ -610,7 +608,7 @@ class UltimeaDevice:
             return True
         if frame.command == INFO_SOURCE and len(data) == 1:
             self.state.raw_source = data[0]
-            source = VALUE_TO_SOURCE.get(data[0])
+            source = decode_source_value(self.identity.model, data[0], info=True)
             if source is not None:
                 self.state.source = source
             return True
@@ -783,7 +781,12 @@ class UltimeaDevice:
             (Feature.POWER, INFO_POWER, lambda d: len(d) == 1 and d[0] in (0, 1)),
             (Feature.MUTE, INFO_MUTE, lambda d: len(d) == 1 and d[0] in (0, 1)),
             (Feature.VOLUME, INFO_VOLUME, lambda d: len(d) == 1),
-            (Feature.SOURCE, INFO_SOURCE, lambda d: len(d) == 1 and d[0] in VALUE_TO_SOURCE),
+            (
+                Feature.SOURCE,
+                INFO_SOURCE,
+                lambda d: len(d) == 1
+                and decode_source_value(self.identity.model, d[0], info=True) is not None,
+            ),
             (Feature.SOUND_MODE, INFO_SOUND_MODE, lambda d: len(d) == 1 and d[0] in VALUE_TO_SOUND_MODE),
             (Feature.BRIGHTNESS, INFO_BRIGHTNESS, lambda d: len(d) == 1 and d[0] in VALUE_TO_BRIGHTNESS),
             (Feature.SCREEN_TIMEOUT, INFO_SCREEN_TIMEOUT, lambda d: len(d) == 1 and d[0] in VALUE_TO_SCREEN_TIMEOUT),
@@ -851,7 +854,7 @@ class UltimeaDevice:
         data: bytes,
         *,
         feature: Feature,
-        refresh: Callable[[], Awaitable[Any]],
+        refresh: Callable[[], Awaitable[Any]] | None,
         is_expected: Callable[[], bool],
         timeout: float = 2.0,
     ) -> None:
@@ -874,6 +877,8 @@ class UltimeaDevice:
                 "ULTIMEA ACK missed for command 0x%02X; verifying resulting state",
                 command,
             )
+            if refresh is None:
+                raise ack_error
             await asyncio.sleep(0.15)
             try:
                 await refresh()
@@ -885,11 +890,21 @@ class UltimeaDevice:
 
     async def async_set_volume(self, raw_volume: int) -> None:
         raw_volume = max(0, min(255, int(raw_volume)))
+        spec = profile_for_model(self.identity.model).wire_spec(Feature.VOLUME)
+        if spec is None or spec.write is None:
+            raise UltimeaCommandError(
+                "volume write is not proven for this ULTIMEA model"
+            )
+        refresh = (
+            (lambda: self.async_query(spec.read.group, spec.read.command))
+            if spec.read is not None
+            else None
+        )
         await self._async_write_verified(
-            CMD_VOLUME,
+            spec.write.command,
             bytes([raw_volume]),
             feature=Feature.VOLUME,
-            refresh=lambda: self.async_query(GROUP_INFO, INFO_VOLUME),
+            refresh=refresh,
             is_expected=lambda: self.state.raw_volume == raw_volume,
         )
 
@@ -936,12 +951,24 @@ class UltimeaDevice:
         )
 
     async def async_set_source(self, source: Source) -> None:
-        data = bytes([SOURCE_TO_VALUE[source]])
+        profile = profile_for_model(self.identity.model)
+        spec = profile.wire_spec(Feature.SOURCE)
+        value = source_value_for_model(self.identity.model, source)
+        if spec is None or spec.write is None or value is None:
+            raise UltimeaCommandError(
+                f"source {source.value!r} is not proven for this ULTIMEA model"
+            )
+        refresh = (
+            (lambda: self.async_query(spec.read.group, spec.read.command))
+            if spec.read is not None
+            else None
+        )
+        data = bytes([value])
         await self._async_write_verified(
-            CMD_SOURCE,
+            spec.write.command,
             data,
             feature=Feature.SOURCE,
-            refresh=lambda: self.async_query(GROUP_INFO, INFO_SOURCE),
+            refresh=refresh,
             is_expected=lambda: self.state.source is source,
         )
 
