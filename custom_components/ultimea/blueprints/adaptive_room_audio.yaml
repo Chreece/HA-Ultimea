@@ -587,6 +587,10 @@ triggers:
     id: bar_volume_change
     enabled: !input learn_manual_volume_changes
   - trigger: state
+    entity_id: !input ultimea_players
+    attribute: source
+    id: bar_source_change
+  - trigger: state
     entity_id: !input min_volume_helper
     id: volume_source
   - trigger: state
@@ -912,7 +916,7 @@ actions:
                   {{ max_volume }}
                 {% endif %}
               manual_max_volume: >-
-                {{ [min_volume, manual_zone_max_candidate] | max }}
+                {{ [min_volume, [manual_zone_max_candidate, max_volume] | min] | max }}
               manual_scheduled_volume: >-
                 {% if in_quiet_hours %}
                   {{ min_volume }}
@@ -1008,6 +1012,70 @@ actions:
                             data:
                               value: "{{ manual_settled_learning_value }}"
           - stop: Manual ULTIMEA volume change handled without fighting the user.
+
+  # A source change may make the physical soundbar recall a source-specific
+  # volume. Let that hardware update settle briefly, then clamp only downward if
+  # it exceeds this bar's effective normal maximum. Never raise volume here.
+  - choose:
+      - conditions:
+          - condition: template
+            value_template: >-
+              {{ apply_volume_follow
+                 and trigger_id == 'bar_source_change'
+                 and trigger.from_state is not none
+                 and trigger.to_state is not none
+                 and trigger.from_state.attributes.get('source')
+                     != trigger.to_state.attributes.get('source') }}
+        sequence:
+          - variables:
+              source_bar: "{{ trigger_entity }}"
+              source_bar_area: "{{ area_id(trigger_entity) or '' }}"
+              source_zone_matches: >-
+                {% set ns = namespace(matches=[]) %}
+                {% set candidates = [zone_volume_entities]
+                   if zone_volume_entities is string else zone_volume_entities %}
+                {% if source_bar_area != '' %}
+                  {% for entity in candidates %}
+                    {% if (area_id(entity) or '') == source_bar_area %}
+                      {% set ns.matches = ns.matches + [entity] %}
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+                {{ ns.matches }}
+              source_zone_entity: >-
+                {{ source_zone_matches[0]
+                   if source_zone_matches | length == 1 else '' }}
+              source_zone_candidate: >-
+                {% if source_zone_entity %}
+                  {% set scale = state_attr(source_zone_entity, 'max') | float(0) %}
+                  {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
+                  {% set raw = states(source_zone_entity) | float(fallback) %}
+                  {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+                  {{ [[normalized, 0.0] | max, 1.0] | min }}
+                {% else %}
+                  {{ max_volume }}
+                {% endif %}
+              source_effective_max: >-
+                {{ [min_volume, [source_zone_candidate, max_volume] | min] | max }}
+          - delay:
+              milliseconds: 750
+          - variables:
+              source_live_volume: >-
+                {{ state_attr(source_bar, 'volume_level') | float(-1) }}
+          - if:
+              - condition: template
+                value_template: >-
+                  {{ is_state(source_bar, 'on')
+                     and source_live_volume >= 0
+                     and source_live_volume - source_effective_max > 0.009 }}
+            then:
+              - action: media_player.volume_set
+                continue_on_error: true
+                target:
+                  entity_id: "{{ source_bar }}"
+                data:
+                  volume_level: "{{ [[source_effective_max, 0.0] | max, 1.0] | min | round(2) }}"
+          - stop: ULTIMEA source change handled without raising volume.
 
   # Ignore unrelated ULTIMEA attribute changes. The one exception is a bar
   # becoming ON, when the current room policy should be applied once.
@@ -1113,7 +1181,7 @@ actions:
                         {{ max_volume }}
                       {% endif %}
                     bar_max_volume: >-
-                      {{ [min_volume, zone_max_candidate] | max }}
+                      {{ [min_volume, [zone_max_candidate, max_volume] | min] | max }}
                     bar_scheduled_volume: >-
                       {% if in_quiet_hours %}
                         {{ min_volume }}
@@ -1931,7 +1999,7 @@ actions:
                               {{ max_volume }}
                             {% endif %}
                           fade_bar_max_volume: >-
-                            {{ [min_volume, fade_zone_max_candidate] | max }}
+                            {{ [min_volume, [fade_zone_max_candidate, max_volume] | min] | max }}
                           fade_scheduled_volume: >-
                             {% if fade_phase == 'before' and transition_before_seconds > 0 %}
                               {% set progress = 1 - (fade_seconds_until_start / transition_before_seconds) %}
@@ -2115,7 +2183,7 @@ actions:
                             {{ max_volume }}
                           {% endif %}
                         final_target: >-
-                          {{ [min_volume, final_zone_max_candidate] | max }}
+                          {{ [min_volume, [final_zone_max_candidate, max_volume] | min] | max }}
                         final_current: >-
                           {{ state_attr(bar, 'volume_level') | float(-1) }}
                     - if:
