@@ -25,9 +25,12 @@ blueprint:
     Optional conditional source routing can watch selected entities whose state,
     or explicitly named attributes, contain room/area names, area IDs or entity
     IDs. When a token resolves to a soundbar's Home Assistant area, that bar
-    switches to the configured source. A room match has priority over the normal
-    area-paired audio-input selector; when the match disappears, the selector can
-    take over again. The special values `all` and `*` match every selected bar.
+    switches to the configured source. It can also watch selected media players
+    and switch the soundbar in the same Home Assistant area while that player is
+    playing or buffering. Active playback has priority over a room-token match,
+    and a room-token match has priority over the normal area-paired audio-input
+    selector. When conditions clear, the selector can take over again. The special
+    values `all` and `*` match every selected bar for the room-token rule.
 
     Optional per-zone normal-volume entities use the same area matching. Exactly
     one numeric entity in a soundbar's area overrides the global maximum/normal
@@ -111,6 +114,36 @@ blueprint:
             Source selected on a soundbar when the room entity resolves to that
             soundbar's Home Assistant area. No change disables conditional source
             routing while preserving the normal area-paired selector behavior.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - eARC
+                - HDMI
+                - Optical
+                - AUX
+                - Bluetooth
+                - USB
+        conditional_source_media_players:
+          name: Conditional source media players (optional)
+          description: >-
+            Select media players that should switch the ULTIMEA bar in the same
+            Home Assistant area while they are playing or buffering. Media players
+            without an area are ignored so this rule never acts globally.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        conditional_media_source_target:
+          name: Source while matching media player plays
+          description: >-
+            Source selected on the ULTIMEA soundbar in the same area while one of
+            the selected media players is playing or buffering. This rule has
+            priority over the room-name conditional rule below it. No change
+            disables this playback rule.
           default: No change
           selector:
             select:
@@ -456,6 +489,8 @@ variables:
   conditional_source_room_entities: !input conditional_source_room_entities
   conditional_source_room_attributes: !input conditional_source_room_attributes
   conditional_source_target: !input conditional_source_target
+  conditional_source_media_players: !input conditional_source_media_players
+  conditional_media_source_target: !input conditional_media_source_target
   min_volume_value: !input min_volume_value
   min_volume_source_input: !input min_volume_helper
   max_volume_value: !input max_volume_value
@@ -538,6 +573,9 @@ triggers:
   - trigger: state
     entity_id: !input conditional_source_room_entities
     id: conditional_source_room_change
+  - trigger: state
+    entity_id: !input conditional_source_media_players
+    id: conditional_source_media_change
   - trigger: state
     entity_id: !input low_volume_binary_entities
     id: low_binary_change
@@ -1331,19 +1369,24 @@ actions:
                                 then:
                                   - delay: "00:00:05"
 
-  # Optional source routing. The normal audio-input selector remains area-local,
-  # while conditional routing can derive active rooms from another entity's state
-  # or explicitly named attributes. A room match has priority over the selector.
-  # When a match disappears, a configured selector can restore the area's baseline.
+  # Optional source routing. The normal audio-input selector remains area-local.
+  # Conditional routing can derive active rooms from another entity's state or
+  # explicitly named attributes, and can react to a media player actively playing
+  # in the same area. Playback has priority over room matching, which has priority
+  # over the selector. When conditions clear, a configured selector can restore
+  # the area's baseline.
   - choose:
       - conditions:
           - condition: template
             value_template: >-
               {{ ((audio_input_selectors | length > 0)
                    or ((conditional_source_room_entities | length > 0)
-                       and conditional_source_target != 'No change'))
+                       and conditional_source_target != 'No change')
+                   or ((conditional_source_media_players | length > 0)
+                       and conditional_media_source_target != 'No change'))
                  and (trigger_id in ['startup', 'audio_input_change',
-                                     'conditional_source_room_change']
+                                     'conditional_source_room_change',
+                                     'conditional_source_media_change']
                       or bar_became_on) }}
         sequence:
           - repeat:
@@ -1362,6 +1405,9 @@ actions:
                         {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
                       {% elif trigger_id == 'conditional_source_room_change' %}
                         true
+                      {% elif trigger_id == 'conditional_source_media_change' %}
+                        {% set trigger_area = area_id(trigger_entity) or '' %}
+                        {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
                       {% else %}
                         false
                       {% endif %}
@@ -1407,10 +1453,28 @@ actions:
                          and ('*' in conditional_source_area_ids
                               or (bar_area != ''
                                   and bar_area in conditional_source_area_ids)) }}
+                    playing_media_matches_bar: >-
+                      {% set ns = namespace(active=false) %}
+                      {% set players = [conditional_source_media_players]
+                         if conditional_source_media_players is string
+                         else conditional_source_media_players %}
+                      {% if bar_area != '' and conditional_media_source_target != 'No change' %}
+                        {% for entity in players %}
+                          {% if (area_id(entity) or '') == bar_area
+                                and states(entity) in ['playing', 'buffering'] %}
+                            {% set ns.active = true %}
+                          {% endif %}
+                        {% endfor %}
+                      {% endif %}
+                      {{ ns.active }}
                     requested_source: >-
-                      {{ conditional_source_target
-                         if conditional_source_matches_bar
-                         else selector_requested_source }}
+                      {% if playing_media_matches_bar %}
+                        {{ conditional_media_source_target }}
+                      {% elif conditional_source_matches_bar %}
+                        {{ conditional_source_target }}
+                      {% else %}
+                        {{ selector_requested_source }}
+                      {% endif %}
                     current_source: "{{ state_attr(bar, 'source') or '' }}"
                     supported_sources: "{{ state_attr(bar, 'source_list') | default([], true) }}"
                 - choose:
