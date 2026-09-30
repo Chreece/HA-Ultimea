@@ -129,6 +129,7 @@ The repository includes [`ULTIMEA Adaptive Room Audio`](blueprints/automation/ul
 
 - use fixed numeric min/max volume or optional numeric entity sources, with opt-in learning from manual volume changes;
 - bind an optional `input_select`/`select` audio-input selector to each soundbar by Home Assistant area; the picker is searchable by friendly label and ambiguous/unassigned selectors are ignored;
+- conditionally override a bar's source when another entity's state or explicitly named attribute reports that bar's Home Assistant room/area, with the ordinary area selector resuming when the room match disappears;
 - give each soundbar area an optional numeric normal-volume entity, such as an `input_number` dashboard slider, with the global maximum used only as fallback;
 - apply quiet hours (ώρες κοινής ησυχίας), including event-driven before/after boundary fades and guarded five-second-step handoff/restores without permanent polling triggers;
 - lower volume immediately for selected binary conditions, room-list state/attribute sources, TTS playback, active Assist satellites, or a night-mode boolean;
