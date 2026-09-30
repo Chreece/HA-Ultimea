@@ -72,11 +72,12 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     required = {
         "ultimea_players",
         "audio_input_selectors",
-        "conditional_source_room_entities",
-        "conditional_source_room_attributes",
-        "conditional_source_target",
-        "conditional_source_media_players",
-        "conditional_media_source_target",
+        "source_players_earc",
+        "source_players_hdmi",
+        "source_players_optical",
+        "source_players_aux",
+        "source_players_bluetooth",
+        "source_players_usb",
         "quiet_start",
         "quiet_end",
         "transition_before",
@@ -122,34 +123,18 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     assert source_selector["filter"][0]["domain"] == ["input_select", "select"]
     assert inputs["audio_input_selectors"]["default"] == []
 
-    conditional_rooms = inputs["conditional_source_room_entities"]["selector"]["entity"]
-    assert conditional_rooms["multiple"] is True
-    assert inputs["conditional_source_room_entities"]["default"] == []
-    assert inputs["conditional_source_room_attributes"]["default"] == ""
-    assert inputs["conditional_source_target"]["default"] == "No change"
-    assert inputs["conditional_source_target"]["selector"]["select"]["options"] == [
-        "No change",
-        "eARC",
-        "HDMI",
-        "Optical",
-        "AUX",
-        "Bluetooth",
-        "USB",
-    ]
-    playback_players = inputs["conditional_source_media_players"]["selector"]["entity"]
-    assert playback_players["multiple"] is True
-    assert playback_players["filter"][0]["domain"] == "media_player"
-    assert inputs["conditional_source_media_players"]["default"] == []
-    assert inputs["conditional_media_source_target"]["default"] == "No change"
-    assert inputs["conditional_media_source_target"]["selector"]["select"]["options"] == [
-        "No change",
-        "eARC",
-        "HDMI",
-        "Optical",
-        "AUX",
-        "Bluetooth",
-        "USB",
-    ]
+    for key in (
+        "source_players_earc",
+        "source_players_hdmi",
+        "source_players_optical",
+        "source_players_aux",
+        "source_players_bluetooth",
+        "source_players_usb",
+    ):
+        selector = inputs[key]["selector"]["entity"]
+        assert selector["multiple"] is True
+        assert selector["filter"][0]["domain"] == "media_player"
+        assert inputs[key]["default"] == []
     assert inputs["handoff_transition"]["default"]["seconds"] == 15
 
 
@@ -186,13 +171,19 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "fade_interrupted_by_manual_volume" in text
     assert "fade_can_adjust" in text
     assert "audio_input_change" in text
-    assert "conditional_source_room_change" in text
-    assert "conditional_source_media_change" in text
-    assert "conditional_source_area_ids" in text
-    assert "conditional_source_matches_bar" in text
-    assert "conditional_source_target" in text
-    assert "playing_media_matches_bar" in text
-    assert "conditional_media_source_target" in text
+    for trigger_id in (
+        "source_media_earc",
+        "source_media_hdmi",
+        "source_media_optical",
+        "source_media_aux",
+        "source_media_bluetooth",
+        "source_media_usb",
+    ):
+        assert trigger_id in text
+    assert "latest_playing_source" in text
+    assert "as_timestamp(obj.last_changed, 0)" in text
+    assert "conditional_source_room_change" not in text
+    assert "conditional_source_area_ids" not in text
     assert "matching_audio_selectors" in text
     assert "selector_requested_source" in text
     assert "requested_source" in text
@@ -238,16 +229,14 @@ def test_blueprint_has_no_periodic_automation_triggers() -> None:
     assert volume_trigger["attribute"] == "volume_level"
     assert volume_trigger["enabled"] == {"!input": "learn_manual_volume_changes"}
 
-    conditional_source_trigger = next(
-        item for item in triggers if item.get("id") == "conditional_source_room_change"
-    )
-    assert conditional_source_trigger["entity_id"] == {
-        "!input": "conditional_source_room_entities"
+    expected_source_triggers = {
+        "source_media_earc": "source_players_earc",
+        "source_media_hdmi": "source_players_hdmi",
+        "source_media_optical": "source_players_optical",
+        "source_media_aux": "source_players_aux",
+        "source_media_bluetooth": "source_players_bluetooth",
+        "source_media_usb": "source_players_usb",
     }
-
-    conditional_media_trigger = next(
-        item for item in triggers if item.get("id") == "conditional_source_media_change"
-    )
-    assert conditional_media_trigger["entity_id"] == {
-        "!input": "conditional_source_media_players"
-    }
+    for trigger_id, input_name in expected_source_triggers.items():
+        source_trigger = next(item for item in triggers if item.get("id") == trigger_id)
+        assert source_trigger["entity_id"] == {"!input": input_name}
