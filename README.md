@@ -27,9 +27,27 @@
 | Device/protocol | Status |
 | --- | --- |
 | ULTIMEA Poseidon D80 Boom (U2623) | ✅ Hardware verified |
-| Other ULTIMEA devices that pass the APK common/custom protocol probe | 🧪 Experimental, capability-driven |
+| ULTIMEA Poseidon D70 | 🧪 Partial, capture-backed: volume + ARC/Optical/AUX source writes |
+| Other ULTIMEA devices that pass the APK common/custom protocol probe | 🧪 Experimental, capability-driven/read-only writes unless proven |
 
-The integration is not a D80 model-name allow-list. It discovers likely ULTIMEA advertisements, selects the app protocol transport, asks the device for its model/protocol information, fetches the raw capability block when available, and probes safe read-only states. D80-only advanced functions are enabled by the hardware-verified D80 profile.
+The integration is not a D80 model-name allow-list. It discovers likely ULTIMEA advertisements, selects the app protocol transport, asks the device for its model/protocol information, fetches the raw capability block when available, and probes safe read-only states. Writable controls are profile-gated and are exposed only when the exact model has a proven wire mapping. The D70 profile currently exposes only the reporter-captured volume and ARC/Optical/AUX setters; uncaptured controls remain disabled.
+
+## Poseidon D70 partial support
+
+Issue #4 supplied control captures proving the same AA/BB framing for:
+
+- absolute volume: CONTROL `02:03`;
+- ARC: CONTROL `02:02 00`;
+- Optical: CONTROL `02:02 01`;
+- AUX: CONTROL `02:02 03`.
+
+The D70 source enum is model-specific: its captured ARC setter uses `00`, while
+the D80 eARC setter uses `10`. The integration therefore keeps source wire values
+inside the model profile and labels the D70 return-channel input **ARC**.
+
+Bluetooth, USB, power, mute, EQ and other D70 writes are intentionally not exposed
+until equivalent captures prove them. Read-only safe protocol probes may still
+populate state/capability information when the device responds.
 
 ## Poseidon D80 Boom entities
 
