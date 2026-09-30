@@ -75,6 +75,8 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "conditional_source_room_entities",
         "conditional_source_room_attributes",
         "conditional_source_target",
+        "conditional_source_media_players",
+        "conditional_media_source_target",
         "quiet_start",
         "quiet_end",
         "transition_before",
@@ -134,6 +136,20 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "Bluetooth",
         "USB",
     ]
+    playback_players = inputs["conditional_source_media_players"]["selector"]["entity"]
+    assert playback_players["multiple"] is True
+    assert playback_players["filter"][0]["domain"] == "media_player"
+    assert inputs["conditional_source_media_players"]["default"] == []
+    assert inputs["conditional_media_source_target"]["default"] == "No change"
+    assert inputs["conditional_media_source_target"]["selector"]["select"]["options"] == [
+        "No change",
+        "eARC",
+        "HDMI",
+        "Optical",
+        "AUX",
+        "Bluetooth",
+        "USB",
+    ]
     assert inputs["handoff_transition"]["default"]["seconds"] == 15
 
 
@@ -171,9 +187,12 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "fade_can_adjust" in text
     assert "audio_input_change" in text
     assert "conditional_source_room_change" in text
+    assert "conditional_source_media_change" in text
     assert "conditional_source_area_ids" in text
     assert "conditional_source_matches_bar" in text
     assert "conditional_source_target" in text
+    assert "playing_media_matches_bar" in text
+    assert "conditional_media_source_target" in text
     assert "matching_audio_selectors" in text
     assert "selector_requested_source" in text
     assert "requested_source" in text
@@ -224,4 +243,11 @@ def test_blueprint_has_no_periodic_automation_triggers() -> None:
     )
     assert conditional_source_trigger["entity_id"] == {
         "!input": "conditional_source_room_entities"
+    }
+
+    conditional_media_trigger = next(
+        item for item in triggers if item.get("id") == "conditional_source_media_change"
+    )
+    assert conditional_media_trigger["entity_id"] == {
+        "!input": "conditional_source_media_players"
     }
