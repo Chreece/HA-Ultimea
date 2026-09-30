@@ -72,6 +72,9 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     required = {
         "ultimea_players",
         "audio_input_selectors",
+        "conditional_source_room_entities",
+        "conditional_source_room_attributes",
+        "conditional_source_target",
         "quiet_start",
         "quiet_end",
         "transition_before",
@@ -116,6 +119,21 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     assert source_selector["multiple"] is True
     assert source_selector["filter"][0]["domain"] == ["input_select", "select"]
     assert inputs["audio_input_selectors"]["default"] == []
+
+    conditional_rooms = inputs["conditional_source_room_entities"]["selector"]["entity"]
+    assert conditional_rooms["multiple"] is True
+    assert inputs["conditional_source_room_entities"]["default"] == []
+    assert inputs["conditional_source_room_attributes"]["default"] == ""
+    assert inputs["conditional_source_target"]["default"] == "No change"
+    assert inputs["conditional_source_target"]["selector"]["select"]["options"] == [
+        "No change",
+        "eARC",
+        "HDMI",
+        "Optical",
+        "AUX",
+        "Bluetooth",
+        "USB",
+    ]
     assert inputs["handoff_transition"]["default"]["seconds"] == 15
 
 
@@ -152,7 +170,12 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "fade_interrupted_by_manual_volume" in text
     assert "fade_can_adjust" in text
     assert "audio_input_change" in text
+    assert "conditional_source_room_change" in text
+    assert "conditional_source_area_ids" in text
+    assert "conditional_source_matches_bar" in text
+    assert "conditional_source_target" in text
     assert "matching_audio_selectors" in text
+    assert "selector_requested_source" in text
     assert "requested_source" in text
     assert "source_list" in text
     assert "bar_volume_trigger_is_current" in text
@@ -195,3 +218,10 @@ def test_blueprint_has_no_periodic_automation_triggers() -> None:
     volume_trigger = next(item for item in triggers if item.get("id") == "bar_volume_change")
     assert volume_trigger["attribute"] == "volume_level"
     assert volume_trigger["enabled"] == {"!input": "learn_manual_volume_changes"}
+
+    conditional_source_trigger = next(
+        item for item in triggers if item.get("id") == "conditional_source_room_change"
+    )
+    assert conditional_source_trigger["entity_id"] == {
+        "!input": "conditional_source_room_entities"
+    }
