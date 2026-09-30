@@ -95,7 +95,8 @@ You can select multiple numeric entities as **Per-zone normal-volume entities**.
 For each ULTIMEA soundbar, the blueprint looks for exactly one selected numeric
 entity in the same Home Assistant area:
 
-- one match: that value becomes the soundbar's normal/maximum endpoint;
+- one match: that value becomes the soundbar's per-zone normal target, but it is
+  always capped by the global maximum below;
 - no match: the global maximum below is used;
 - more than one match: the area is treated as ambiguous and the global maximum is
   used rather than guessing;
@@ -107,10 +108,17 @@ The minimum/quiet endpoint remains global. Quiet-hour fades are calculated from
 each soundbar's effective zone maximum down to that shared minimum, so different
 zones can follow the same quiet-hours policy without sharing their normal volume.
 
-The shared minimum and global-fallback maximum keep the existing fixed numeric
-value plus optional numeric-entity override behavior. Supported domains are
+The shared minimum and global maximum keep the existing fixed numeric value plus
+optional numeric-entity override behavior. **Maximum volume is always a hard
+ceiling**: a per-zone normal-volume entity may lower that zone's normal target but
+can never raise it above the configured global maximum. Supported domains are
 `input_number`, `number`, and `sensor`, with automatic normalization of 0–1 and
 0–100 values.
+
+Changing soundbar source can make some hardware recall a source-specific volume.
+The blueprint watches source changes, lets that hardware update settle briefly,
+then clamps only downward when the recalled volume exceeds the effective maximum.
+It never raises volume as part of source-change handling.
 
 **Learn min/max from manual volume changes** is an explicit option and is disabled
 by default. When enabled:
