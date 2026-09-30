@@ -1459,9 +1459,11 @@ actions:
                                 then:
                                   - delay: "00:00:05"
 
-  # Optional media-player source routing. A playing media player only affects
-  # the ULTIMEA soundbar in the same Home Assistant area. If several mapped
-  # players are playing there, the player with the newest last_changed timestamp
+  # Optional media-player source routing. With one selected ULTIMEA soundbar,
+  # mapped media players control it directly and do not require an HA area.
+  # With multiple selected soundbars, area matching disambiguates which bar a
+  # mapped player controls. If several mapped players affect one bar, the player
+  # with the newest last_changed timestamp
   # wins. When no mapped player is playing, the single configured fallback source
   # is used. No change leaves the source untouched (legacy area selector remains a
   # backward-compatible fallback only when this new fallback is No change).
@@ -1500,8 +1502,12 @@ actions:
                       {% elif trigger_id in ['source_media_earc', 'source_media_hdmi',
                                              'source_media_optical', 'source_media_aux',
                                              'source_media_bluetooth', 'source_media_usb'] %}
-                        {% set trigger_area = area_id(trigger_entity) or '' %}
-                        {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
+                        {% if ultimea_players | length == 1 %}
+                          true
+                        {% else %}
+                          {% set trigger_area = area_id(trigger_entity) or '' %}
+                          {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
+                        {% endif %}
                       {% else %}
                         false
                       {% endif %}
@@ -1548,7 +1554,8 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                              and ((ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
                             {% set ns.source = 'eARC' %}
@@ -1560,7 +1567,8 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                              and ((ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
                             {% set ns.source = 'HDMI' %}
@@ -1572,7 +1580,8 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                              and ((ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
                             {% set ns.source = 'Optical' %}
@@ -1584,7 +1593,8 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                              and ((ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
                             {% set ns.source = 'AUX' %}
@@ -1596,7 +1606,8 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                              and ((ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
                             {% set ns.source = 'Bluetooth' %}
@@ -1608,7 +1619,8 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and bar_area != '' and (area_id(entity) or '') == bar_area %}
+                              and ((ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
                             {% set ns.source = 'USB' %}
