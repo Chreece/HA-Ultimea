@@ -1707,22 +1707,30 @@ actions:
                       {% endif %}
                     current_source: "{{ state_attr(bar, 'source') or '' }}"
                     supported_sources: "{{ state_attr(bar, 'source_list') | default([], true) }}"
+                    effective_requested_source: >-
+                      {% if requested_source == 'eARC'
+                            and 'eARC' not in supported_sources
+                            and 'ARC' in supported_sources %}
+                        ARC
+                      {% else %}
+                        {{ requested_source }}
+                      {% endif %}
                 - choose:
                     - conditions:
                         - condition: template
                           value_template: >-
                             {{ is_state(bar, 'on')
                                and source_trigger_affects_bar
-                               and requested_source != ''
-                               and requested_source in supported_sources
-                               and current_source != requested_source }}
+                               and effective_requested_source != ''
+                               and effective_requested_source in supported_sources
+                               and current_source != effective_requested_source }}
                       sequence:
                         - action: media_player.select_source
                           continue_on_error: true
                           target:
                             entity_id: "{{ bar }}"
                           data:
-                            source: "{{ requested_source }}"
+                            source: "{{ effective_requested_source }}"
 
   # Optional provider-agnostic content/AI hook. It is intentionally not tied to
   # a specific camera, LLM, vision provider or service contract.
