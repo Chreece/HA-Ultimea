@@ -136,8 +136,15 @@ by default. When enabled:
   path remain valid policy inputs;
 - numeric `sensor` sources and fixed numeric values are read-only and are never
   mutated;
-- manual changes during a quiet-hours fade do not learn either endpoint. They
-  interrupt that fade instead.
+- during the **before-quiet decreasing fade**, a settled manual increase learns
+  the writable minimum endpoint; a manual decrease is temporary and is not
+  learned;
+- during the **after-quiet increasing fade**, a settled manual decrease learns
+  the writable maximum/zone endpoint; a manual increase is temporary and is not
+  learned;
+- endpoint learning during a fade still requires **Learn min/max from manual
+  volume changes** and a writable `input_number`/`number`. The directional
+  hold behavior itself works even when no writable endpoint is available.
 
 For fully separate quiet/minimum endpoints or different schedules, create separate
 blueprint instances. Per-zone normal volume no longer requires separate instances.
@@ -152,7 +159,11 @@ Quiet hours may cross midnight, for example `22:00` to `07:00`.
   maximum to minimum.
 - **After** quiet hours, the configured transition duration linearly fades from
   minimum to maximum.
-- The fade is stepped every five seconds **inside one active fade run**. There is no permanent five-second automation trigger. If the user changes the soundbar volume during the fade, that zone is excluded for the rest of that transition run. A direct minimum-volume condition such as TTS can still override while it is active.
+- The fade is stepped every five seconds **inside one active fade run**. There is no permanent five-second automation trigger. Manual changes are directional rather than simply aborting the run:
+  - **Before quiet hours (volume moving down):** if the user raises the volume, the fade stops lowering that bar and the settled value becomes the new minimum when learning is available. If the user lowers the volume, that lower value is held until the scheduled fade itself falls below it, then automatic lowering resumes.
+  - **After quiet hours (volume moving up):** if the user raises the volume, that higher value is held until the scheduled fade itself rises above it, then automatic raising resumes. If the user lowers the volume, the fade stops raising that bar and the settled value becomes the new maximum/zone target when learning is available.
+  - The active fade re-reads current min/max helpers on every five-second step, so a newly learned endpoint takes effect immediately inside the already-running transition.
+  - Direct minimum-volume conditions such as TTS still override while active.
 - When automation later needs to return from ducking or retake a target after an interrupted boundary fade, the **Guarded handoff / restore duration** controls that restore. A value of **0 disables the handoff transition** and required automatic restores are applied immediately. Non-zero handoffs use fixed five-second steps and each step is allowed only while the observed volume still matches the previous expected step. A manual volume change never starts a handoff and is left at the user's chosen value; a manual/external change during an existing handoff aborts it. Queued intermediate volume events are checked against the current live volume, so stale self-generated steps cannot be learned later as manual changes.
 - If an automation-originated duck ends while a quiet-boundary fade is active, the guarded handoff projects to the point the scheduled fade will reach when the handoff completes; the active fade run resumes its five-second steps from there.
 - TTS, active binary conditions, Assist activity, list-state conditions, and a
