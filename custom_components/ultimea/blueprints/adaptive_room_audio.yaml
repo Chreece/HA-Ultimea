@@ -1502,7 +1502,7 @@ actions:
                       {% elif trigger_id in ['source_media_earc', 'source_media_hdmi',
                                              'source_media_optical', 'source_media_aux',
                                              'source_media_bluetooth', 'source_media_usb'] %}
-                        {% if ultimea_players | length == 1 %}
+                        {% if ultimea_players is string or ultimea_players | length == 1 %}
                           true
                         {% else %}
                           {% set trigger_area = area_id(trigger_entity) or '' %}
@@ -1554,7 +1554,7 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and ((ultimea_players | length == 1)
+                              and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
@@ -1567,7 +1567,7 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and ((ultimea_players | length == 1)
+                              and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
@@ -1580,7 +1580,7 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and ((ultimea_players | length == 1)
+                              and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
@@ -1593,7 +1593,7 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and ((ultimea_players | length == 1)
+                              and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
@@ -1606,7 +1606,7 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and ((ultimea_players | length == 1)
+                              and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
@@ -1619,7 +1619,7 @@ actions:
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
                         {% if obj is not none and obj.state == 'playing'
-                              and ((ultimea_players | length == 1)
+                              and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
                           {% if changed > ns.changed %}
