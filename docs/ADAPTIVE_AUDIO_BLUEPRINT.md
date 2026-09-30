@@ -39,6 +39,50 @@ Source follow is event-driven. A manual source choice is not continuously fought
 the blueprint acts again only when the configured selector changes, Home Assistant
 starts, or that soundbar turns on.
 
+### Conditional room-driven source routing
+
+The blueprint can also switch a soundbar to one configured source when a separate
+entity says that room is active. This is useful for room-follow systems, presence
+routers, media handoff helpers, or any entity that already publishes a room name.
+
+Configure:
+
+- **Conditional source room entities**: one or more entities whose **state** contains
+  a room/area name, area ID, entity ID, or a comma-separated list of those values;
+- **Conditional source room attribute name(s)**: optional comma-separated attribute
+  names to inspect in addition to the state. Each named attribute may contain one
+  room, a comma-separated string, or a list;
+- **Source when room matches**: the ULTIMEA input to select (`eARC`, `HDMI`,
+  `Optical`, `AUX`, `Bluetooth`, or `USB`).
+
+Each token is resolved against Home Assistant areas. When it resolves to the same
+area as an ULTIMEA media player, that soundbar switches to the configured source.
+`all` and `*` match every selected soundbar.
+
+Only explicitly named attributes are inspected. This avoids false matches from
+unrelated string attributes such as `friendly_name`.
+
+Conditional room routing has priority over the ordinary area-paired audio-input
+selector. When the room match disappears, a configured area selector can restore
+that room's baseline source. If there is no area selector, a non-match leaves the
+current source unchanged. Like the existing selector logic, this is event-driven:
+changes to the selected room entity (including attribute-only state updates),
+startup, or a soundbar turning on cause a re-evaluation.
+
+Example using entity state:
+
+```text
+living_room
+```
+
+Example using a named attribute:
+
+```yaml
+rooms:
+  - living_room
+  - kitchen
+```
+
 ## Minimum and maximum volume
 
 ### Optional per-zone normal volume
