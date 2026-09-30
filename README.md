@@ -129,7 +129,7 @@ The repository includes [`ULTIMEA Adaptive Room Audio`](blueprints/automation/ul
 
 - use fixed numeric min/max volume or optional numeric entity sources, with opt-in learning from manual volume changes;
 - bind an optional `input_select`/`select` audio-input selector to each soundbar by Home Assistant area; the picker is searchable by friendly label and ambiguous/unassigned selectors are ignored;
-- map media players to ULTIMEA inputs (`eARC`, `HDMI`, `Optical`, `AUX`, `Bluetooth`, `USB`) by Home Assistant area; when several mapped players are playing, the most recently started player wins, and one global fallback source is used when none are playing;
+- map media players to ULTIMEA inputs (`eARC`, `HDMI`, `Optical`, `AUX`, `Bluetooth`, `USB`); with one selected soundbar no area assignment is required, while multiple bars use areas for disambiguation; the most recently started player wins and one global fallback source is used when none are playing;
 - give each soundbar area an optional numeric normal-volume entity, such as an `input_number` dashboard slider, with the global maximum used only as fallback;
 - apply quiet hours (ώρες κοινής ησυχίας), including event-driven before/after boundary fades and guarded five-second-step handoff/restores without permanent polling triggers;
 - lower volume immediately for selected binary conditions, room-list state/attribute sources, TTS playback, active Assist satellites, or a night-mode boolean;
