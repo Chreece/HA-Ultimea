@@ -219,6 +219,11 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "bar_max_volume" in text
     assert "bar_scheduled_volume" in text
     assert "manual_scheduled_volume" in text
+    assert "manual_settled_volume" in text
+    assert "manual_volume_stable_after_delay" in text
+    assert "manual_settled_learning_value" in text
+    assert 'delay: "00:00:03"' in text
+    assert "manual_learning_value" not in text
     assert "delay: \"00:00:05\"" in text
     assert "manual_in_time_transition" in text
     assert "area_id(" in text
