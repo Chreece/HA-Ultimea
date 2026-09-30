@@ -155,6 +155,23 @@ blueprint:
               multiple: true
               filter:
                 - domain: media_player
+        source_fallback:
+          name: Fallback source when no mapped media player is playing
+          description: >-
+            Default ULTIMEA source used when no mapped media player is playing.
+            This is a single source choice and does not use Home Assistant areas.
+            No change leaves the current source untouched.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - eARC
+                - HDMI
+                - Optical
+                - AUX
+                - Bluetooth
+                - USB
         min_volume_value:
           name: Minimum volume
           description: >-
@@ -282,8 +299,11 @@ blueprint:
             hours fade reaches its boundary. The transition always uses fixed
             five-second steps. If the actual volume stops matching the expected
             intermediate value, the handoff stops instead of fighting the user.
-            Values shorter than five seconds are clamped to one five-second
-            interval so a handoff never becomes a single abrupt jump.
+            Set this to 0 to disable the handoff transition; required automatic
+            restores are then applied immediately. Non-zero values shorter than
+            five seconds are clamped to one five-second interval. A manual volume
+            change never starts a handoff and the user's chosen volume is left
+            untouched.
           default:
             hours: 0
             minutes: 0
@@ -492,6 +512,7 @@ variables:
   source_players_aux: !input source_players_aux
   source_players_bluetooth: !input source_players_bluetooth
   source_players_usb: !input source_players_usb
+  source_fallback: !input source_fallback
   min_volume_value: !input min_volume_value
   min_volume_source_input: !input min_volume_helper
   max_volume_value: !input max_volume_value
@@ -1113,9 +1134,14 @@ actions:
                          or extra_low
                          or not fade_interrupted_by_manual_volume }}
                     guarded_handoff_steps: >-
-                      {{ [2, ((handoff_transition_seconds / 5) | round(0, 'ceil') | int) + 1] | max }}
+                      {% if handoff_transition_seconds <= 0 %}
+                        0
+                      {% else %}
+                        {{ [2, ((handoff_transition_seconds / 5) | round(0, 'ceil') | int) + 1] | max }}
+                      {% endif %}
                     guarded_handoff_duration: >-
-                      {{ ((guarded_handoff_steps | int) - 1) * 5 }}
+                      {{ 0 if (guarded_handoff_steps | int) <= 0
+                         else ((guarded_handoff_steps | int) - 1) * 5 }}
                     boundary_handoff_target: >-
                       {% if before_transition_active and transition_before_seconds > 0 %}
                         {% set future_until = [0, seconds_until_quiet_start - guarded_handoff_duration] | max %}
@@ -1129,19 +1155,30 @@ actions:
                         {{ desired_volume }}
                       {% endif %}
                     boundary_guarded_handoff_required: >-
-                      {{ not extra_low
+                      {{ handoff_transition_seconds > 0
+                         and trigger_id != 'bar_volume_change'
+                         and not extra_low
                          and (before_transition_active or after_transition_active)
                          and boundary_retake_allowed
                          and current_volume >= 0
                          and (current_volume - boundary_handoff_target) | abs > 0.009 }}
                     guarded_handoff_required: >-
-                      {{ not extra_low
+                      {{ handoff_transition_seconds > 0
+                         and trigger_id != 'bar_volume_change'
+                         and not extra_low
                          and current_volume >= 0
                          and (
                            boundary_guarded_handoff_required
                            or (not (before_transition_active or after_transition_active)
                                and (current_volume - desired_volume) | abs > 0.009)
                          ) }}
+                    immediate_restore_required: >-
+                      {{ handoff_transition_seconds <= 0
+                         and trigger_id != 'bar_volume_change'
+                         and not extra_low
+                         and not (before_transition_active or after_transition_active)
+                         and (current_volume < 0
+                              or (current_volume - desired_volume) | abs > 0.009) }}
                     guarded_handoff_target: >-
                       {{ boundary_handoff_target
                          if (before_transition_active or after_transition_active)
@@ -1173,6 +1210,21 @@ actions:
                                and fade_can_adjust
                                and (current_volume < 0
                                     or (current_volume - desired_volume) | abs > 0.009) }}
+                      sequence:
+                        - action: media_player.volume_set
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ bar }}"
+                          data:
+                            volume_level: >-
+                              {{ [[desired_volume, 0.0] | max, 1.0] | min | round(2) }}
+                    # With handoff duration 0, automatic non-urgent restores are
+                    # immediate. Manual volume changes are handled earlier and stop
+                    # before this policy block, so the user's volume is not fought.
+                    - conditions:
+                        - condition: template
+                          value_template: >-
+                            {{ is_state(bar, 'on') and immediate_restore_required }}
                       sequence:
                         - action: media_player.volume_set
                           continue_on_error: true
@@ -1340,12 +1392,15 @@ actions:
   # Optional media-player source routing. A playing media player only affects
   # the ULTIMEA soundbar in the same Home Assistant area. If several mapped
   # players are playing there, the player with the newest last_changed timestamp
-  # wins. When no mapped player is playing, the normal area selector is the fallback.
+  # wins. When no mapped player is playing, the single configured fallback source
+  # is used. No change leaves the source untouched (legacy area selector remains a
+  # backward-compatible fallback only when this new fallback is No change).
   - choose:
       - conditions:
           - condition: template
             value_template: >-
               {{ ((audio_input_selectors | length > 0)
+                   or source_fallback != 'No change'
                    or (source_players_earc | length > 0)
                    or (source_players_hdmi | length > 0)
                    or (source_players_optical | length > 0)
@@ -1493,7 +1548,13 @@ actions:
                       {% endfor %}
                       {{ ns.source }}
                     requested_source: >-
-                      {{ latest_playing_source if latest_playing_source else selector_requested_source }}
+                      {% if latest_playing_source %}
+                        {{ latest_playing_source }}
+                      {% elif source_fallback != 'No change' %}
+                        {{ source_fallback }}
+                      {% else %}
+                        {{ selector_requested_source }}
+                      {% endif %}
                     current_source: "{{ state_attr(bar, 'source') or '' }}"
                     supported_sources: "{{ state_attr(bar, 'source_list') | default([], true) }}"
                 - choose:
