@@ -223,6 +223,10 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "[fade_zone_max_candidate, max_volume] | min" in text
     assert "[final_zone_max_candidate, max_volume] | min" in text
     assert "bar_scheduled_volume" in text
+    assert "bar_source_change" in text
+    assert "source_effective_max" in text
+    assert "source_live_volume - source_effective_max > 0.009" in text
+    assert "ULTIMEA source change handled without raising volume." in text
     assert "manual_scheduled_volume" in text
     assert "manual_settled_volume" in text
     assert "manual_volume_stable_after_delay" in text
@@ -259,6 +263,9 @@ def test_blueprint_has_no_periodic_automation_triggers() -> None:
     volume_trigger = next(item for item in triggers if item.get("id") == "bar_volume_change")
     assert volume_trigger["attribute"] == "volume_level"
     assert volume_trigger["enabled"] == {"!input": "learn_manual_volume_changes"}
+
+    source_trigger = next(item for item in triggers if item.get("id") == "bar_source_change")
+    assert source_trigger["attribute"] == "source"
 
     expected_source_triggers = {
         "source_media_earc": "source_players_earc",
