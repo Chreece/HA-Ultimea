@@ -39,61 +39,46 @@ Source follow is event-driven. A manual source choice is not continuously fought
 the blueprint acts again only when the configured selector changes, Home Assistant
 starts, or that soundbar turns on.
 
-### Conditional room-driven source routing
+### Media-player source routing
 
-The blueprint can also switch a soundbar to one configured source when a separate
-entity says that room is active. This is useful for room-follow systems, presence
-routers, media handoff helpers, or any entity that already publishes a room name.
+Source routing is intentionally simple: assign media players to the ULTIMEA input
+they use. The blueprint exposes six entity groups:
 
-Configure:
+- **Media players → eARC**
+- **Media players → HDMI**
+- **Media players → Optical**
+- **Media players → AUX**
+- **Media players → Bluetooth**
+- **Media players → USB**
 
-- **Conditional source room entities**: one or more entities whose **state** contains
-  a room/area name, area ID, entity ID, or a comma-separated list of those values;
-- **Conditional source room attribute name(s)**: optional comma-separated attribute
-  names to inspect in addition to the state. Each named attribute may contain one
-  room, a comma-separated string, or a list;
-- **Source when room matches**: the ULTIMEA input to select (`eARC`, `HDMI`,
-  `Optical`, `AUX`, `Bluetooth`, or `USB`).
+Put each media player in only one source group and assign it to the same Home
+Assistant area as the ULTIMEA soundbar it should control.
 
-Each token is resolved against Home Assistant areas. When it resolves to the same
-area as an ULTIMEA media player, that soundbar switches to the configured source.
-`all` and `*` match every selected soundbar.
+When a mapped media player enters `playing`, the soundbar in the same area switches
+to that player's mapped source. Media players without an area are ignored.
 
-Only explicitly named attributes are inspected. This avoids false matches from
-unrelated string attributes such as `friendly_name`.
+If more than one mapped media player in the same area is playing, the player that
+most recently entered the `playing` state wins. If that player stops or pauses,
+the next most-recent still-playing mapped player takes over automatically.
 
-You can also configure **Conditional source media players** plus **Source while
-matching media player plays**. When one of those media players is `playing` or
-`buffering`, the ULTIMEA soundbar in the same Home Assistant area switches to the
-configured source. Media players without an area are ignored, so this rule never
-becomes global accidentally.
+If no mapped media player is playing, the existing area-paired audio-input selector
+is used as the fallback. If no selector is configured either, the blueprint leaves
+the current soundbar source unchanged.
 
-Source-routing priority is:
+The rule is event-driven: it re-evaluates when a mapped media player changes state,
+when its area's source selector changes, when Home Assistant starts, or when the
+soundbar turns on.
 
-1. matching media player actively playing/buffering;
-2. matching room state/attribute;
-3. the ordinary area-paired audio-input selector.
-
-When a higher-priority condition clears, the next applicable rule takes over. If
-there is no area selector, a non-match leaves the current source unchanged. Like
-the existing selector logic, this is event-driven: changes to the selected room
-entity, changes to the selected media players, startup, or a soundbar turning on
-cause a re-evaluation.
-
-Example using entity state:
+Example:
 
 ```text
-living_room
+media_player.tv            → eARC
+media_player.game_console  → HDMI
+media_player.music_player  → Bluetooth
 ```
 
-Example using a named attribute:
-
-```yaml
-rooms:
-  - living_room
-  - kitchen
-```
-
+With the TV and console both playing, whichever entered `playing` most recently
+controls the source. When it stops, the other active player takes over.
 ## Minimum and maximum volume
 
 ### Optional per-zone normal volume
