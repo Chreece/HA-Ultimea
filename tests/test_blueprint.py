@@ -218,6 +218,10 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "manual_zone_volume_entity" in text
     assert "manual_zone_max_candidate" in text
     assert "bar_max_volume" in text
+    assert "[zone_max_candidate, max_volume] | min" in text
+    assert "[manual_zone_max_candidate, max_volume] | min" in text
+    assert "[fade_zone_max_candidate, max_volume] | min" in text
+    assert "[final_zone_max_candidate, max_volume] | min" in text
     assert "bar_scheduled_volume" in text
     assert "manual_scheduled_volume" in text
     assert "manual_settled_volume" in text
