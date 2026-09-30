@@ -61,13 +61,15 @@ If more than one mapped media player in the same area is playing, the player tha
 most recently entered the `playing` state wins. If that player stops or pauses,
 the next most-recent still-playing mapped player takes over automatically.
 
-If no mapped media player is playing, the existing area-paired audio-input selector
-is used as the fallback. If no selector is configured either, the blueprint leaves
-the current soundbar source unchanged.
+If no mapped media player is playing, **Fallback source when no mapped media player
+is playing** is used. This is one global source selector (`eARC`, `HDMI`, `Optical`,
+`AUX`, `Bluetooth`, `USB`, or `No change`) and does not use Home Assistant areas.
+`No change` leaves the current source untouched. For backward compatibility, the
+older area-paired audio-input selector is consulted only when this new fallback is
+set to `No change`.
 
 The rule is event-driven: it re-evaluates when a mapped media player changes state,
-when its area's source selector changes, when Home Assistant starts, or when the
-soundbar turns on.
+when Home Assistant starts, or when the soundbar turns on.
 
 Example:
 
@@ -130,7 +132,7 @@ Quiet hours may cross midnight, for example `22:00` to `07:00`.
 - **After** quiet hours, the configured transition duration linearly fades from
   minimum to maximum.
 - The fade is stepped every five seconds **inside one active fade run**. There is no permanent five-second automation trigger. If the user changes the soundbar volume during the fade, that zone is excluded for the rest of that transition run. A direct minimum-volume condition such as TTS can still override while it is active.
-- When automation later needs to return from ducking or retake a target after an interrupted boundary fade, the **Guarded handoff / restore duration** is used instead of one abrupt volume jump. The handoff also uses fixed five-second steps and each step is allowed only while the observed volume still matches the previous expected step. A manual/external change therefore aborts the handoff. Queued intermediate volume events are checked against the current live volume, so stale self-generated steps cannot be learned later as manual changes.
+- When automation later needs to return from ducking or retake a target after an interrupted boundary fade, the **Guarded handoff / restore duration** controls that restore. A value of **0 disables the handoff transition** and required automatic restores are applied immediately. Non-zero handoffs use fixed five-second steps and each step is allowed only while the observed volume still matches the previous expected step. A manual volume change never starts a handoff and is left at the user's chosen value; a manual/external change during an existing handoff aborts it. Queued intermediate volume events are checked against the current live volume, so stale self-generated steps cannot be learned later as manual changes.
 - If an automation-originated duck ends while a quiet-boundary fade is active, the guarded handoff projects to the point the scheduled fade will reach when the handoff completes; the active fade run resumes its five-second steps from there.
 - TTS, active binary conditions, Assist activity, list-state conditions, and a
   night-mode boolean switch to minimum volume immediately. Those non-time
