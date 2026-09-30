@@ -4,7 +4,10 @@ blueprint:
     Room-aware automation for ULTIMEA soundbars. It can learn a normal and quiet
     volume, lower volume during quiet hours / TTS / active binary conditions /
     Assist activity, fade only around the quiet-hours boundaries, select Night
-    mode, and follow the content playing on a connected media player.
+    mode, and follow the content playing on a connected media player. Manual
+    volume learning is debounced: the final unchanged value is learned only after
+    three seconds, and the resulting helper update is treated as a learning echo
+    rather than a new command to move the soundbar.
 
     Minimum and maximum volume can be fixed percentages or read from optional
     numeric entities. When manual-volume learning is enabled and the selected
@@ -21,6 +24,14 @@ blueprint:
     Assistant area. The entity picker can be searched by friendly name/label;
     Home Assistant stores the selected entity ID. Exactly one selector must match
     a soundbar area, so unassigned or ambiguous selectors never act globally.
+
+    Optional media-player source routing maps media players to ULTIMEA inputs.
+    When a configured media player is playing, the soundbar in the same Home
+    Assistant area switches to that player's mapped source. If multiple mapped
+    media players in one area are playing, the one that most recently entered the
+    playing state wins. When it stops, the next most-recent still-playing player
+    takes over. If none are playing, the normal area-paired audio-input selector
+    remains the fallback.
 
     Optional per-zone normal-volume entities use the same area matching. Exactly
     one numeric entity in a soundbar's area overrides the global maximum/normal
@@ -75,6 +86,95 @@ blueprint:
                 - domain:
                     - input_select
                     - select
+        source_players_earc:
+          name: Media players → eARC
+          description: >-
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to eARC while playing. Put each media player in
+            only one source group.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        source_players_hdmi:
+          name: Media players → HDMI
+          description: >-
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to HDMI while playing. Put each media player in
+            only one source group.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        source_players_optical:
+          name: Media players → Optical
+          description: >-
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to Optical while playing. Put each media player
+            in only one source group.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        source_players_aux:
+          name: Media players → AUX
+          description: >-
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to AUX while playing. Put each media player in
+            only one source group.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        source_players_bluetooth:
+          name: Media players → Bluetooth
+          description: >-
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to Bluetooth while playing. Put each media player
+            in only one source group.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        source_players_usb:
+          name: Media players → USB
+          description: >-
+            Media players that should switch the ULTIMEA soundbar in the same
+            Home Assistant area to USB while playing. Put each media player in
+            only one source group.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        source_fallback:
+          name: Fallback source when no mapped media player is playing
+          description: >-
+            Default ULTIMEA source used when no mapped media player is playing.
+            This is a single source choice and does not use Home Assistant areas.
+            No change leaves the current source untouched.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - eARC
+                - HDMI
+                - Optical
+                - AUX
+                - Bluetooth
+                - USB
         min_volume_value:
           name: Minimum volume
           description: >-
@@ -202,8 +302,11 @@ blueprint:
             hours fade reaches its boundary. The transition always uses fixed
             five-second steps. If the actual volume stops matching the expected
             intermediate value, the handoff stops instead of fighting the user.
-            Values shorter than five seconds are clamped to one five-second
-            interval so a handoff never becomes a single abrupt jump.
+            Set this to 0 to disable the handoff transition; required automatic
+            restores are then applied immediately. Non-zero values shorter than
+            five seconds are clamped to one five-second interval. A manual volume
+            change never starts a handoff and the user's chosen volume is left
+            untouched.
           default:
             hours: 0
             minutes: 0
@@ -385,8 +488,11 @@ blueprint:
           description: >-
             When enabled, manual soundbar volume changes update the active minimum
             or maximum only when that endpoint uses a writable input_number/number
-            entity. Manual changes during a quiet-hours fade never change an
-            endpoint; they stop that fade for the affected soundbar.
+            entity. The final manual value must remain unchanged for three seconds
+            before it is learned, preventing intermediate knob/button steps from
+            triggering the old maximum again. Manual changes during a quiet-hours
+            fade never change an endpoint; they stop that fade for the affected
+            soundbar.
           default: false
           selector:
             boolean: {}
@@ -406,6 +512,13 @@ blueprint:
 variables:
   ultimea_players: !input ultimea_players
   audio_input_selectors: !input audio_input_selectors
+  source_players_earc: !input source_players_earc
+  source_players_hdmi: !input source_players_hdmi
+  source_players_optical: !input source_players_optical
+  source_players_aux: !input source_players_aux
+  source_players_bluetooth: !input source_players_bluetooth
+  source_players_usb: !input source_players_usb
+  source_fallback: !input source_fallback
   min_volume_value: !input min_volume_value
   min_volume_source_input: !input min_volume_helper
   max_volume_value: !input max_volume_value
@@ -485,6 +598,24 @@ triggers:
   - trigger: state
     entity_id: !input audio_input_selectors
     id: audio_input_change
+  - trigger: state
+    entity_id: !input source_players_earc
+    id: source_media_earc
+  - trigger: state
+    entity_id: !input source_players_hdmi
+    id: source_media_hdmi
+  - trigger: state
+    entity_id: !input source_players_optical
+    id: source_media_optical
+  - trigger: state
+    entity_id: !input source_players_aux
+    id: source_media_aux
+  - trigger: state
+    entity_id: !input source_players_bluetooth
+    id: source_media_bluetooth
+  - trigger: state
+    entity_id: !input source_players_usb
+    id: source_media_usb
   - trigger: state
     entity_id: !input low_volume_binary_entities
     id: low_binary_change
@@ -620,7 +751,8 @@ actions:
           {% endif %}
         {% endfor %}
         {{ ns.area_ids | unique | list }}
-
+  - variables:
+      quiet_hours_enabled: "{{ quiet_start_seconds != quiet_end_seconds }}"
   - variables:
       quiet_hours_enabled: "{{ quiet_start_seconds != quiet_end_seconds }}"
       in_quiet_hours: >-
@@ -820,14 +952,10 @@ actions:
                    else (manual_zone_volume_entity if manual_zone_volume_entity else max_volume_entity) }}
               manual_learning_domain: >-
                 {{ manual_learning_entity.split('.', 1)[0] if manual_learning_entity else '' }}
-              manual_learning_value: >-
-                {% if manual_learning_entity %}
-                  {% set scale = state_attr(manual_learning_entity, 'max') | float(0) %}
-                  {% set current = states(manual_learning_entity) | float(0) %}
-                  {{ (manual_volume * 100 if scale > 1.5 or current > 1.5 else manual_volume) | round(2) }}
-                {% else %}
-                  {{ manual_volume | round(2) }}
-                {% endif %}
+          # Debounce manual endpoint learning. Each volume event gets its own
+          # parallel run; only the run whose value is still live three seconds later
+          # is allowed to write the helper. Earlier intermediate steps therefore
+          # expire harmlessly instead of firing volume_source with stale values.
           - choose:
               - conditions:
                   - condition: template
@@ -835,28 +963,50 @@ actions:
                       {{ manual_differs_from_expected
                          and not manual_in_time_transition
                          and learn_manual_volume_changes
-                         and manual_learning_domain == 'input_number' }}
+                         and manual_learning_domain in ['input_number', 'number'] }}
                 sequence:
-                  - action: input_number.set_value
-                    continue_on_error: true
-                    target:
-                      entity_id: "{{ manual_learning_entity }}"
-                    data:
-                      value: "{{ manual_learning_value }}"
-              - conditions:
-                  - condition: template
-                    value_template: >-
-                      {{ manual_differs_from_expected
-                         and not manual_in_time_transition
-                         and learn_manual_volume_changes
-                         and manual_learning_domain == 'number' }}
-                sequence:
-                  - action: number.set_value
-                    continue_on_error: true
-                    target:
-                      entity_id: "{{ manual_learning_entity }}"
-                    data:
-                      value: "{{ manual_learning_value }}"
+                  - delay: "00:00:03"
+                  - variables:
+                      manual_settled_volume: >-
+                        {{ state_attr(manual_bar, 'volume_level') | float(-1) }}
+                      manual_volume_stable_after_delay: >-
+                        {{ manual_settled_volume >= 0
+                           and (manual_settled_volume - manual_volume) | abs <= 0.004 }}
+                      manual_settled_learning_value: >-
+                        {% if manual_learning_entity %}
+                          {% set scale = state_attr(manual_learning_entity, 'max') | float(0) %}
+                          {% set current = states(manual_learning_entity) | float(0) %}
+                          {{ (manual_settled_volume * 100
+                              if scale > 1.5 or current > 1.5
+                              else manual_settled_volume) | round(2) }}
+                        {% else %}
+                          {{ manual_settled_volume | round(2) }}
+                        {% endif %}
+                  - choose:
+                      - conditions:
+                          - condition: template
+                            value_template: >-
+                              {{ manual_volume_stable_after_delay
+                                 and manual_learning_domain == 'input_number' }}
+                        sequence:
+                          - action: input_number.set_value
+                            continue_on_error: true
+                            target:
+                              entity_id: "{{ manual_learning_entity }}"
+                            data:
+                              value: "{{ manual_settled_learning_value }}"
+                      - conditions:
+                          - condition: template
+                            value_template: >-
+                              {{ manual_volume_stable_after_delay
+                                 and manual_learning_domain == 'number' }}
+                        sequence:
+                          - action: number.set_value
+                            continue_on_error: true
+                            target:
+                              entity_id: "{{ manual_learning_entity }}"
+                            data:
+                              value: "{{ manual_settled_learning_value }}"
           - stop: Manual ULTIMEA volume change handled without fighting the user.
 
   # Ignore unrelated ULTIMEA attribute changes. The one exception is a bar
@@ -869,9 +1019,10 @@ actions:
           - stop: ULTIMEA state change left untouched.
 
   # Volume policy. Quiet-boundary fades retain their fixed five-second stepping.
-  # Direct minimum-volume conditions are intentionally immediate. When automation
-  # returns to a non-urgent target, a guarded handoff advances in fixed five-second
-  # steps and aborts if the actual volume no longer matches the previous step.
+  # Direct minimum-volume conditions are intentionally immediate. A volume helper
+  # update produced by this blueprint's own settled manual-volume learning is a
+  # learning echo and never writes the soundbar back. Other helper changes remain
+  # policy inputs. Non-urgent restores use the configured guarded handoff behavior.
   - choose:
       - conditions:
           - condition: template
@@ -989,6 +1140,44 @@ actions:
                       {{ min_volume if extra_low else bar_scheduled_volume }}
                     current_volume: >-
                       {{ state_attr(bar, 'volume_level') | float(-1) }}
+                    volume_source_trigger_value: >-
+                      {% if trigger_id == 'volume_source'
+                            and trigger.to_state is not none %}
+                        {% set raw = trigger.to_state.state | float(-1) %}
+                        {% set scale = trigger.to_state.attributes.get('max', 0) | float(0) %}
+                        {{ raw / 100 if raw >= 0 and (scale > 1.5 or raw > 1.5) else raw }}
+                      {% else %}
+                        -1
+                      {% endif %}
+                    volume_source_targets_bar: >-
+                      {{ trigger_id == 'volume_source'
+                         and trigger_entity != ''
+                         and trigger_entity in [min_volume_entity,
+                                                max_volume_entity,
+                                                zone_volume_entity] }}
+                    volume_source_context_is_bar_child: >-
+                      {% set obj = expand(bar) | first %}
+                      {{ volume_source_targets_bar
+                         and trigger.to_state is not none
+                         and obj is not none
+                         and trigger.to_state.context.parent_id is not none
+                         and obj.context.id is not none
+                         and trigger.to_state.context.parent_id == obj.context.id }}
+                    volume_source_matches_live_volume: >-
+                      {{ volume_source_targets_bar
+                         and current_volume >= 0
+                         and volume_source_trigger_value >= 0
+                         and (current_volume - volume_source_trigger_value) | abs <= 0.009 }}
+                    volume_source_recent_bar_update: >-
+                      {% set obj = expand(bar) | first %}
+                      {{ volume_source_targets_bar
+                         and obj is not none
+                         and (as_timestamp(now()) - as_timestamp(obj.last_updated)) <= 5 }}
+                    volume_source_is_learning_echo: >-
+                      {{ volume_source_targets_bar
+                         and volume_source_matches_live_volume
+                         and (volume_source_context_is_bar_child
+                              or volume_source_recent_bar_update) }}
                     previous_transition_target: >-
                       {{ bar_previous_scheduled_volume | float(desired_volume) | round(2) }}
                     boundary_retake_allowed: >-
@@ -1008,9 +1197,14 @@ actions:
                          or extra_low
                          or not fade_interrupted_by_manual_volume }}
                     guarded_handoff_steps: >-
-                      {{ [2, ((handoff_transition_seconds / 5) | round(0, 'ceil') | int) + 1] | max }}
+                      {% if handoff_transition_seconds <= 0 %}
+                        0
+                      {% else %}
+                        {{ [2, ((handoff_transition_seconds / 5) | round(0, 'ceil') | int) + 1] | max }}
+                      {% endif %}
                     guarded_handoff_duration: >-
-                      {{ ((guarded_handoff_steps | int) - 1) * 5 }}
+                      {{ 0 if (guarded_handoff_steps | int) <= 0
+                         else ((guarded_handoff_steps | int) - 1) * 5 }}
                     boundary_handoff_target: >-
                       {% if before_transition_active and transition_before_seconds > 0 %}
                         {% set future_until = [0, seconds_until_quiet_start - guarded_handoff_duration] | max %}
@@ -1024,19 +1218,30 @@ actions:
                         {{ desired_volume }}
                       {% endif %}
                     boundary_guarded_handoff_required: >-
-                      {{ not extra_low
+                      {{ handoff_transition_seconds > 0
+                         and trigger_id != 'bar_volume_change'
+                         and not extra_low
                          and (before_transition_active or after_transition_active)
                          and boundary_retake_allowed
                          and current_volume >= 0
                          and (current_volume - boundary_handoff_target) | abs > 0.009 }}
                     guarded_handoff_required: >-
-                      {{ not extra_low
+                      {{ handoff_transition_seconds > 0
+                         and trigger_id != 'bar_volume_change'
+                         and not extra_low
                          and current_volume >= 0
                          and (
                            boundary_guarded_handoff_required
                            or (not (before_transition_active or after_transition_active)
                                and (current_volume - desired_volume) | abs > 0.009)
                          ) }}
+                    immediate_restore_required: >-
+                      {{ handoff_transition_seconds <= 0
+                         and trigger_id != 'bar_volume_change'
+                         and not extra_low
+                         and not (before_transition_active or after_transition_active)
+                         and (current_volume < 0
+                              or (current_volume - desired_volume) | abs > 0.009) }}
                     guarded_handoff_target: >-
                       {{ boundary_handoff_target
                          if (before_transition_active or after_transition_active)
@@ -1046,7 +1251,9 @@ actions:
                     - conditions:
                         - condition: template
                           value_template: >-
-                            {{ is_state(bar, 'on') and extra_low
+                            {{ is_state(bar, 'on')
+                               and not volume_source_is_learning_echo
+                               and extra_low
                                and (current_volume < 0 or (current_volume - desired_volume) | abs > 0.009) }}
                       sequence:
                         - action: media_player.volume_set
@@ -1062,12 +1269,30 @@ actions:
                         - condition: template
                           value_template: >-
                             {{ is_state(bar, 'on')
+                               and not volume_source_is_learning_echo
                                and not extra_low
                                and (before_transition_active or after_transition_active)
                                and not boundary_guarded_handoff_required
                                and fade_can_adjust
                                and (current_volume < 0
                                     or (current_volume - desired_volume) | abs > 0.009) }}
+                      sequence:
+                        - action: media_player.volume_set
+                          continue_on_error: true
+                          target:
+                            entity_id: "{{ bar }}"
+                          data:
+                            volume_level: >-
+                              {{ [[desired_volume, 0.0] | max, 1.0] | min | round(2) }}
+                    # With handoff duration 0, automatic non-urgent restores are
+                    # immediate. Manual volume changes are handled earlier and stop
+                    # before this policy block, so the user's volume is not fought.
+                    - conditions:
+                        - condition: template
+                          value_template: >-
+                            {{ is_state(bar, 'on')
+                               and not volume_source_is_learning_echo
+                               and immediate_restore_required }}
                       sequence:
                         - action: media_player.volume_set
                           continue_on_error: true
@@ -1084,7 +1309,9 @@ actions:
                     - conditions:
                         - condition: template
                           value_template: >-
-                            {{ is_state(bar, 'on') and guarded_handoff_required }}
+                            {{ is_state(bar, 'on')
+                               and not volume_source_is_learning_echo
+                               and guarded_handoff_required }}
                       sequence:
                         - variables:
                             handoff_start_volume: "{{ current_volume | float(0) }}"
@@ -1232,15 +1459,30 @@ actions:
                                 then:
                                   - delay: "00:00:05"
 
-  # Optional audio-input follow. Selectors are paired strictly by Home Assistant
-  # area. The UI entity picker exposes friendly labels but stores stable entity IDs.
-  # Unassigned selectors and ambiguous same-area matches are deliberately ignored.
+  # Optional media-player source routing. With one selected ULTIMEA soundbar,
+  # mapped media players control it directly and do not require an HA area.
+  # With multiple selected soundbars, area matching disambiguates which bar a
+  # mapped player controls. If several mapped players affect one bar, the player
+  # with the newest last_changed timestamp
+  # wins. When no mapped player is playing, the single configured fallback source
+  # is used. No change leaves the source untouched (legacy area selector remains a
+  # backward-compatible fallback only when this new fallback is No change).
   - choose:
       - conditions:
           - condition: template
             value_template: >-
-              {{ (audio_input_selectors | length > 0)
-                 and (trigger_id in ['startup', 'audio_input_change']
+              {{ ((audio_input_selectors | length > 0)
+                   or source_fallback != 'No change'
+                   or (source_players_earc | length > 0)
+                   or (source_players_hdmi | length > 0)
+                   or (source_players_optical | length > 0)
+                   or (source_players_aux | length > 0)
+                   or (source_players_bluetooth | length > 0)
+                   or (source_players_usb | length > 0))
+                 and (trigger_id in ['startup', 'audio_input_change',
+                                     'source_media_earc', 'source_media_hdmi',
+                                     'source_media_optical', 'source_media_aux',
+                                     'source_media_bluetooth', 'source_media_usb']
                       or bar_became_on) }}
         sequence:
           - repeat:
@@ -1257,6 +1499,15 @@ actions:
                       {% elif trigger_id == 'audio_input_change' %}
                         {% set trigger_area = area_id(trigger_entity) or '' %}
                         {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
+                      {% elif trigger_id in ['source_media_earc', 'source_media_hdmi',
+                                             'source_media_optical', 'source_media_aux',
+                                             'source_media_bluetooth', 'source_media_usb'] %}
+                        {% if ultimea_players is string or ultimea_players | length == 1 %}
+                          true
+                        {% else %}
+                          {% set trigger_area = area_id(trigger_entity) or '' %}
+                          {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
+                        {% endif %}
                       {% else %}
                         false
                       {% endif %}
@@ -1275,10 +1526,10 @@ actions:
                     audio_selector: >-
                       {{ matching_audio_selectors[0]
                          if matching_audio_selectors | length == 1 else '' }}
-                    raw_requested_source: >-
+                    raw_selector_source: >-
                       {{ states(audio_selector) | trim if audio_selector else '' }}
-                    requested_source: >-
-                      {% set raw = raw_requested_source | trim %}
+                    selector_requested_source: >-
+                      {% set raw = raw_selector_source | trim %}
                       {% set key = raw | lower | replace(' ', '') | replace('-', '') | replace('_', '') %}
                       {% if key in ['earc', 'arc', 'audioreturnchannel', 'enhancedreturnchannel'] %}
                         eARC
@@ -1297,6 +1548,95 @@ actions:
                       {% else %}
                         {{ raw }}
                       {% endif %}
+                    latest_playing_source: >-
+                      {% set ns = namespace(source='', changed=0) %}
+                      {% set players = [source_players_earc] if source_players_earc is string else source_players_earc %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and ((ultimea_players is string or ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'eARC' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {% set players = [source_players_hdmi] if source_players_hdmi is string else source_players_hdmi %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and ((ultimea_players is string or ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'HDMI' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {% set players = [source_players_optical] if source_players_optical is string else source_players_optical %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and ((ultimea_players is string or ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'Optical' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {% set players = [source_players_aux] if source_players_aux is string else source_players_aux %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and ((ultimea_players is string or ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'AUX' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {% set players = [source_players_bluetooth] if source_players_bluetooth is string else source_players_bluetooth %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and ((ultimea_players is string or ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'Bluetooth' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {% set players = [source_players_usb] if source_players_usb is string else source_players_usb %}
+                      {% for entity in players %}
+                        {% set obj = expand(entity) | first %}
+                        {% if obj is not none and obj.state == 'playing'
+                              and ((ultimea_players is string or ultimea_players | length == 1)
+                                   or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
+                          {% set changed = as_timestamp(obj.last_changed, 0) %}
+                          {% if changed > ns.changed %}
+                            {% set ns.source = 'USB' %}
+                            {% set ns.changed = changed %}
+                          {% endif %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.source }}
+                    requested_source: >-
+                      {% if latest_playing_source %}
+                        {{ latest_playing_source }}
+                      {% elif source_fallback != 'No change' %}
+                        {{ source_fallback }}
+                      {% else %}
+                        {{ selector_requested_source }}
+                      {% endif %}
                     current_source: "{{ state_attr(bar, 'source') or '' }}"
                     supported_sources: "{{ state_attr(bar, 'source_list') | default([], true) }}"
                 - choose:
@@ -1305,7 +1645,6 @@ actions:
                           value_template: >-
                             {{ is_state(bar, 'on')
                                and source_trigger_affects_bar
-                               and audio_selector != ''
                                and requested_source != ''
                                and requested_source in supported_sources
                                and current_source != requested_source }}

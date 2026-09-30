@@ -72,6 +72,13 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     required = {
         "ultimea_players",
         "audio_input_selectors",
+        "source_players_earc",
+        "source_players_hdmi",
+        "source_players_optical",
+        "source_players_aux",
+        "source_players_bluetooth",
+        "source_players_usb",
+        "source_fallback",
         "quiet_start",
         "quiet_end",
         "transition_before",
@@ -116,6 +123,30 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     assert source_selector["multiple"] is True
     assert source_selector["filter"][0]["domain"] == ["input_select", "select"]
     assert inputs["audio_input_selectors"]["default"] == []
+
+    for key in (
+        "source_players_earc",
+        "source_players_hdmi",
+        "source_players_optical",
+        "source_players_aux",
+        "source_players_bluetooth",
+        "source_players_usb",
+    ):
+        selector = inputs[key]["selector"]["entity"]
+        assert selector["multiple"] is True
+        assert selector["filter"][0]["domain"] == "media_player"
+        assert inputs[key]["default"] == []
+
+    assert inputs["source_fallback"]["default"] == "No change"
+    assert inputs["source_fallback"]["selector"]["select"]["options"] == [
+        "No change",
+        "eARC",
+        "HDMI",
+        "Optical",
+        "AUX",
+        "Bluetooth",
+        "USB",
+    ]
     assert inputs["handoff_transition"]["default"]["seconds"] == 15
 
 
@@ -152,7 +183,26 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "fade_interrupted_by_manual_volume" in text
     assert "fade_can_adjust" in text
     assert "audio_input_change" in text
+    for trigger_id in (
+        "source_media_earc",
+        "source_media_hdmi",
+        "source_media_optical",
+        "source_media_aux",
+        "source_media_bluetooth",
+        "source_media_usb",
+    ):
+        assert trigger_id in text
+    assert "latest_playing_source" in text
+    assert "as_timestamp(obj.last_changed, 0)" in text
+    assert "ultimea_players is string or ultimea_players | length == 1" in text
+    assert "source_fallback" in text
+    assert "immediate_restore_required" in text
+    assert "handoff_transition_seconds <= 0" in text
+    assert "trigger_id != 'bar_volume_change'" in text
+    assert "conditional_source_room_change" not in text
+    assert "conditional_source_area_ids" not in text
     assert "matching_audio_selectors" in text
+    assert "selector_requested_source" in text
     assert "requested_source" in text
     assert "source_list" in text
     assert "bar_volume_trigger_is_current" in text
@@ -170,6 +220,16 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "bar_max_volume" in text
     assert "bar_scheduled_volume" in text
     assert "manual_scheduled_volume" in text
+    assert "manual_settled_volume" in text
+    assert "manual_volume_stable_after_delay" in text
+    assert "manual_settled_learning_value" in text
+    assert 'delay: "00:00:03"' in text
+    assert "manual_learning_value" not in text
+    assert "volume_source_is_learning_echo" in text
+    assert "volume_source_context_is_bar_child" in text
+    assert "volume_source_matches_live_volume" in text
+    assert "volume_source_recent_bar_update" in text
+    assert "trigger.to_state.context.parent_id == obj.context.id" in text
     assert "delay: \"00:00:05\"" in text
     assert "manual_in_time_transition" in text
     assert "area_id(" in text
@@ -195,3 +255,15 @@ def test_blueprint_has_no_periodic_automation_triggers() -> None:
     volume_trigger = next(item for item in triggers if item.get("id") == "bar_volume_change")
     assert volume_trigger["attribute"] == "volume_level"
     assert volume_trigger["enabled"] == {"!input": "learn_manual_volume_changes"}
+
+    expected_source_triggers = {
+        "source_media_earc": "source_players_earc",
+        "source_media_hdmi": "source_players_hdmi",
+        "source_media_optical": "source_players_optical",
+        "source_media_aux": "source_players_aux",
+        "source_media_bluetooth": "source_players_bluetooth",
+        "source_media_usb": "source_players_usb",
+    }
+    for trigger_id, input_name in expected_source_triggers.items():
+        source_trigger = next(item for item in triggers if item.get("id") == trigger_id)
+        assert source_trigger["entity_id"] == {"!input": input_name}
