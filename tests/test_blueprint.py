@@ -224,6 +224,11 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "manual_settled_learning_value" in text
     assert 'delay: "00:00:03"' in text
     assert "manual_learning_value" not in text
+    assert "volume_source_is_learning_echo" in text
+    assert "volume_source_context_is_bar_child" in text
+    assert "volume_source_matches_live_volume" in text
+    assert "volume_source_recent_bar_update" in text
+    assert "trigger.to_state.context.parent_id == obj.context.id" in text
     assert "delay: \"00:00:05\"" in text
     assert "manual_in_time_transition" in text
     assert "area_id(" in text
