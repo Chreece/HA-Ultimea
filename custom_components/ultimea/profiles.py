@@ -35,7 +35,11 @@ from .const import (
     INFO_SOURCE,
     INFO_VOLUME,
     INFO_XUPMIX,
+    INFO_VALUE_TO_SOURCE,
+    SOURCE_TO_VALUE,
+    VALUE_TO_SOURCE,
     Feature,
+    Source,
     VERIFIED_MODEL,
     VERIFIED_MODEL_NUMBER,
 )
@@ -61,6 +65,8 @@ APK_CAPABILITY_VOCABULARY = frozenset(
     }
 )
 
+POSEIDON_D70_MODEL = "Poseidon D70"
+
 VERIFIED_D80_FEATURES = frozenset(
     {
         Feature.POWER,
@@ -77,6 +83,35 @@ VERIFIED_D80_FEATURES = frozenset(
         Feature.STYLE,
     }
 )
+
+VERIFIED_D70_FEATURES = frozenset(
+    {
+        Feature.VOLUME,
+        Feature.SOURCE,
+    }
+)
+
+DEFAULT_SOURCE_NAMES: Mapping[Source, str] = {
+    Source.EARC: "eARC",
+    Source.HDMI: "HDMI",
+    Source.OPTICAL: "Optical",
+    Source.AUX: "AUX",
+    Source.BLUETOOTH: "Bluetooth",
+    Source.USB: "USB",
+}
+
+# Reporter-provided D70 captures from issue #4 prove CONTROL 02:02 values
+# 00=ARC, 01=Optical and 03=AUX. Do not expose uncaptured source setters yet.
+D70_SOURCE_CONTROL_VALUES: Mapping[Source, int] = {
+    Source.EARC: 0x00,
+    Source.OPTICAL: 0x01,
+    Source.AUX: 0x03,
+}
+D70_SOURCE_NAMES: Mapping[Source, str] = {
+    Source.EARC: "ARC",
+    Source.OPTICAL: "Optical",
+    Source.AUX: "AUX",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +173,14 @@ D80_WIRE_FEATURES: Mapping[Feature, FeatureWireSpec] = {
 # Static Frontier-family evidence recovered from the official app. These are
 # deliberately NOT assigned to any product model yet. Most importantly,
 # Frontier 02:0F means single-LED brightness while D80 02:0F is destructive.
+# Reporter-proven Poseidon D70 writes. Reads are intentionally not claimed
+# until INFO captures are supplied; missed ACKs therefore fail safely rather
+# than verifying through an unproven GET path.
+D70_WIRE_FEATURES: Mapping[Feature, FeatureWireSpec] = {
+    Feature.VOLUME: FeatureWireSpec(write=_control(CMD_VOLUME)),
+    Feature.SOURCE: FeatureWireSpec(write=_control(CMD_SOURCE)),
+}
+
 FRONTIER_STATIC_WIRE_FEATURES: Mapping[Feature, FeatureWireSpec] = {
     Feature.SINGLE_LED_SHUTDOWN_TIME: FeatureWireSpec(
         _info(0x16), _control(0x14)
@@ -159,10 +202,55 @@ class UltimeaModelProfile:
     apk_embedded: bool = False
     verified_features: frozenset[Feature] = frozenset()
     wire_features: Mapping[Feature, FeatureWireSpec] = field(default_factory=dict)
+    source_control_values: Mapping[Source, int] = field(default_factory=dict)
+    source_info_values: Mapping[int, Source] = field(default_factory=dict)
+    source_names: Mapping[Source, str] = field(default_factory=dict)
 
     def wire_spec(self, feature: Feature) -> FeatureWireSpec | None:
         """Return an explicitly proven wire mapping, never a numeric guess."""
         return self.wire_features.get(feature)
+
+    def encode_source(self, source: Source) -> int | None:
+        """Return this profile's proven CONTROL source value."""
+        return self.source_control_values.get(source)
+
+    def decode_control_source(self, value: int) -> Source | None:
+        """Decode one profile-specific CONTROL source value."""
+        return next(
+            (
+                source
+                for source, wire_value in self.source_control_values.items()
+                if wire_value == value
+            ),
+            None,
+        )
+
+    def decode_info_source(self, value: int) -> Source | None:
+        """Decode one profile-specific INFO source value."""
+        return self.source_info_values.get(value)
+
+    def source_name(self, source: Source) -> str:
+        """Return the Home Assistant label for one semantic source."""
+        return self.source_names.get(source, DEFAULT_SOURCE_NAMES[source])
+
+    def source_options(self) -> tuple[str, ...]:
+        """Return writable source labels in stable semantic order."""
+        return tuple(
+            self.source_name(source)
+            for source in DEFAULT_SOURCE_NAMES
+            if source in self.source_control_values
+        )
+
+    def source_for_name(self, name: str) -> Source | None:
+        """Resolve a Home Assistant source label accepted by this profile."""
+        return next(
+            (
+                source
+                for source in self.source_control_values
+                if self.source_name(source) == name
+            ),
+            None,
+        )
 
 
 D80_BOOM_PROFILE = UltimeaModelProfile(
@@ -171,6 +259,19 @@ D80_BOOM_PROFILE = UltimeaModelProfile(
     model_number=VERIFIED_MODEL_NUMBER,
     verified_features=VERIFIED_D80_FEATURES,
     wire_features=D80_WIRE_FEATURES,
+    source_control_values=SOURCE_TO_VALUE,
+    source_info_values=INFO_VALUE_TO_SOURCE,
+    source_names=DEFAULT_SOURCE_NAMES,
+)
+D70_PROFILE = UltimeaModelProfile(
+    key="poseidon_d70",
+    verified=True,
+    verified_features=VERIFIED_D70_FEATURES,
+    wire_features=D70_WIRE_FEATURES,
+    source_control_values=D70_SOURCE_CONTROL_VALUES,
+    # D70 INFO-source values have not yet been captured. The generic common
+    # INFO decoder remains available for read-only state observations.
+    source_names=D70_SOURCE_NAMES,
 )
 APK_COMMON_PROFILE = UltimeaModelProfile(
     key="apk_common", verified=False, apk_embedded=True
@@ -179,11 +280,47 @@ GENERIC_COMMON_PROFILE = UltimeaModelProfile(key="generic_common", verified=Fals
 
 
 def profile_for_model(model: str | None) -> UltimeaModelProfile:
-    if model == VERIFIED_MODEL:
+    normalized = (model or "").strip().casefold()
+    if normalized == VERIFIED_MODEL.casefold():
         return D80_BOOM_PROFILE
+    if normalized == POSEIDON_D70_MODEL.casefold():
+        return D70_PROFILE
     if model in APK_EMBEDDED_MODELS:
         return APK_COMMON_PROFILE
     return GENERIC_COMMON_PROFILE
+
+
+def decode_source_value(
+    model: str | None,
+    value: int,
+    *,
+    info: bool,
+) -> Source | None:
+    """Decode source values without mixing CONTROL and INFO enums."""
+    profile = profile_for_model(model)
+    if info:
+        return profile.decode_info_source(value) or INFO_VALUE_TO_SOURCE.get(value)
+    return profile.decode_control_source(value) or VALUE_TO_SOURCE.get(value)
+
+
+def source_value_for_model(model: str | None, source: Source) -> int | None:
+    """Return a proven CONTROL source value for this exact model."""
+    return profile_for_model(model).encode_source(source)
+
+
+def source_name_for_model(model: str | None, source: Source) -> str:
+    """Return the model-appropriate Home Assistant source label."""
+    return profile_for_model(model).source_name(source)
+
+
+def source_options_for_model(model: str | None) -> tuple[str, ...]:
+    """Return source labels that have proven setters on this model."""
+    return profile_for_model(model).source_options()
+
+
+def source_for_name_for_model(model: str | None, name: str) -> Source | None:
+    """Resolve a source label through the exact model profile."""
+    return profile_for_model(model).source_for_name(name)
 
 
 def can_write_feature(
