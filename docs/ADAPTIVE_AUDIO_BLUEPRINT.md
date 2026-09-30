@@ -62,12 +62,23 @@ area as an ULTIMEA media player, that soundbar switches to the configured source
 Only explicitly named attributes are inspected. This avoids false matches from
 unrelated string attributes such as `friendly_name`.
 
-Conditional room routing has priority over the ordinary area-paired audio-input
-selector. When the room match disappears, a configured area selector can restore
-that room's baseline source. If there is no area selector, a non-match leaves the
-current source unchanged. Like the existing selector logic, this is event-driven:
-changes to the selected room entity (including attribute-only state updates),
-startup, or a soundbar turning on cause a re-evaluation.
+You can also configure **Conditional source media players** plus **Source while
+matching media player plays**. When one of those media players is `playing` or
+`buffering`, the ULTIMEA soundbar in the same Home Assistant area switches to the
+configured source. Media players without an area are ignored, so this rule never
+becomes global accidentally.
+
+Source-routing priority is:
+
+1. matching media player actively playing/buffering;
+2. matching room state/attribute;
+3. the ordinary area-paired audio-input selector.
+
+When a higher-priority condition clears, the next applicable rule takes over. If
+there is no area selector, a non-match leaves the current source unchanged. Like
+the existing selector logic, this is event-driven: changes to the selected room
+entity, changes to the selected media players, startup, or a soundbar turning on
+cause a re-evaluation.
 
 Example using entity state:
 
