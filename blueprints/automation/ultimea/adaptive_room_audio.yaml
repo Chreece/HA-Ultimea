@@ -6,7 +6,8 @@ blueprint:
     Assist activity, fade only around the quiet-hours boundaries, select Night
     mode, and follow the content playing on a connected media player. Manual
     volume learning is debounced: the final unchanged value is learned only after
-    three seconds, so intermediate knob/button steps cannot fight the user.
+    three seconds, and the resulting helper update is treated as a learning echo
+    rather than a new command to move the soundbar.
 
     Minimum and maximum volume can be fixed percentages or read from optional
     numeric entities. When manual-volume learning is enabled and the selected
@@ -1018,9 +1019,10 @@ actions:
           - stop: ULTIMEA state change left untouched.
 
   # Volume policy. Quiet-boundary fades retain their fixed five-second stepping.
-  # Direct minimum-volume conditions are intentionally immediate. When automation
-  # returns to a non-urgent target, a guarded handoff advances in fixed five-second
-  # steps and aborts if the actual volume no longer matches the previous step.
+  # Direct minimum-volume conditions are intentionally immediate. A volume helper
+  # update produced by this blueprint's own settled manual-volume learning is a
+  # learning echo and never writes the soundbar back. Other helper changes remain
+  # policy inputs. Non-urgent restores use the configured guarded handoff behavior.
   - choose:
       - conditions:
           - condition: template
@@ -1138,6 +1140,44 @@ actions:
                       {{ min_volume if extra_low else bar_scheduled_volume }}
                     current_volume: >-
                       {{ state_attr(bar, 'volume_level') | float(-1) }}
+                    volume_source_trigger_value: >-
+                      {% if trigger_id == 'volume_source'
+                            and trigger.to_state is not none %}
+                        {% set raw = trigger.to_state.state | float(-1) %}
+                        {% set scale = trigger.to_state.attributes.get('max', 0) | float(0) %}
+                        {{ raw / 100 if raw >= 0 and (scale > 1.5 or raw > 1.5) else raw }}
+                      {% else %}
+                        -1
+                      {% endif %}
+                    volume_source_targets_bar: >-
+                      {{ trigger_id == 'volume_source'
+                         and trigger_entity != ''
+                         and trigger_entity in [min_volume_entity,
+                                                max_volume_entity,
+                                                zone_volume_entity] }}
+                    volume_source_context_is_bar_child: >-
+                      {% set obj = expand(bar) | first %}
+                      {{ volume_source_targets_bar
+                         and trigger.to_state is not none
+                         and obj is not none
+                         and trigger.to_state.context.parent_id is not none
+                         and obj.context.id is not none
+                         and trigger.to_state.context.parent_id == obj.context.id }}
+                    volume_source_matches_live_volume: >-
+                      {{ volume_source_targets_bar
+                         and current_volume >= 0
+                         and volume_source_trigger_value >= 0
+                         and (current_volume - volume_source_trigger_value) | abs <= 0.009 }}
+                    volume_source_recent_bar_update: >-
+                      {% set obj = expand(bar) | first %}
+                      {{ volume_source_targets_bar
+                         and obj is not none
+                         and (as_timestamp(now()) - as_timestamp(obj.last_updated)) <= 5 }}
+                    volume_source_is_learning_echo: >-
+                      {{ volume_source_targets_bar
+                         and volume_source_matches_live_volume
+                         and (volume_source_context_is_bar_child
+                              or volume_source_recent_bar_update) }}
                     previous_transition_target: >-
                       {{ bar_previous_scheduled_volume | float(desired_volume) | round(2) }}
                     boundary_retake_allowed: >-
@@ -1211,7 +1251,9 @@ actions:
                     - conditions:
                         - condition: template
                           value_template: >-
-                            {{ is_state(bar, 'on') and extra_low
+                            {{ is_state(bar, 'on')
+                               and not volume_source_is_learning_echo
+                               and extra_low
                                and (current_volume < 0 or (current_volume - desired_volume) | abs > 0.009) }}
                       sequence:
                         - action: media_player.volume_set
@@ -1227,6 +1269,7 @@ actions:
                         - condition: template
                           value_template: >-
                             {{ is_state(bar, 'on')
+                               and not volume_source_is_learning_echo
                                and not extra_low
                                and (before_transition_active or after_transition_active)
                                and not boundary_guarded_handoff_required
@@ -1247,7 +1290,9 @@ actions:
                     - conditions:
                         - condition: template
                           value_template: >-
-                            {{ is_state(bar, 'on') and immediate_restore_required }}
+                            {{ is_state(bar, 'on')
+                               and not volume_source_is_learning_echo
+                               and immediate_restore_required }}
                       sequence:
                         - action: media_player.volume_set
                           continue_on_error: true
@@ -1264,7 +1309,9 @@ actions:
                     - conditions:
                         - condition: template
                           value_template: >-
-                            {{ is_state(bar, 'on') and guarded_handoff_required }}
+                            {{ is_state(bar, 'on')
+                               and not volume_source_is_learning_echo
+                               and guarded_handoff_required }}
                       sequence:
                         - variables:
                             handoff_start_volume: "{{ current_volume | float(0) }}"
