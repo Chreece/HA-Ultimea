@@ -51,15 +51,21 @@ they use. The blueprint exposes six entity groups:
 - **Media players → Bluetooth**
 - **Media players → USB**
 
-Put each media player in only one source group and assign it to the same Home
-Assistant area as the ULTIMEA soundbar it should control.
+Put each media player in only one source group.
 
-When a mapped media player enters `playing`, the soundbar in the same area switches
-to that player's mapped source. Media players without an area are ignored.
+If the blueprint controls **one ULTIMEA soundbar**, no Home Assistant area
+assignment is required for source routing: every mapped media player controls that
+selected bar directly.
 
-If more than one mapped media player in the same area is playing, the player that
-most recently entered the `playing` state wins. If that player stops or pauses,
-the next most-recent still-playing mapped player takes over automatically.
+If the blueprint controls **multiple ULTIMEA soundbars**, areas are used only to
+disambiguate which bar a mapped media player controls. In that case, the player
+and target soundbar must share an area.
+
+When a mapped media player enters `playing`, its target soundbar switches to that
+player's mapped source. If more than one mapped media player affecting the same bar
+is playing, the player that most recently entered the `playing` state wins. If
+that player stops or pauses, the next most-recent still-playing mapped player takes
+over automatically.
 
 If no mapped media player is playing, **Fallback source when no mapped media player
 is playing** is used. This is one global source selector (`eARC`, `HDMI`, `Optical`,
