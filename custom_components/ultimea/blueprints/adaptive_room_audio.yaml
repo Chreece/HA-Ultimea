@@ -943,17 +943,44 @@ actions:
                 {{ min_volume if manual_extra_low else manual_scheduled_volume }}
               manual_volume: >-
                 {{ trigger.to_state.attributes.get('volume_level') | float(0) }}
+              manual_previous_volume: >-
+                {{ trigger.from_state.attributes.get('volume_level') | float(manual_volume) }}
+              manual_user_raised: >-
+                {{ manual_volume - manual_previous_volume > 0.004 }}
+              manual_user_lowered: >-
+                {{ manual_previous_volume - manual_volume > 0.004 }}
               manual_is_low_regime: >-
                 {{ in_quiet_hours or manual_extra_low }}
               manual_in_time_transition: >-
                 {{ (before_transition_active or after_transition_active) and not manual_extra_low }}
+              manual_transition_learns_min: >-
+                {{ manual_in_time_transition
+                   and before_transition_active
+                   and manual_user_raised }}
+              manual_transition_learns_max: >-
+                {{ manual_in_time_transition
+                   and after_transition_active
+                   and manual_user_lowered }}
               manual_differs_from_expected: >-
                 {{ (manual_volume - manual_expected_volume) | abs > 0.004
                    and (not manual_in_time_transition
                         or (manual_volume - manual_previous_scheduled_volume) | abs > 0.004) }}
               manual_learning_entity: >-
-                {{ min_volume_entity if manual_is_low_regime
-                   else (manual_zone_volume_entity if manual_zone_volume_entity else max_volume_entity) }}
+                {% if manual_transition_learns_min %}
+                  {{ min_volume_entity }}
+                {% elif manual_transition_learns_max %}
+                  {{ manual_zone_volume_entity
+                     if manual_zone_volume_entity else max_volume_entity }}
+                {% elif manual_is_low_regime %}
+                  {{ min_volume_entity }}
+                {% else %}
+                  {{ manual_zone_volume_entity
+                     if manual_zone_volume_entity else max_volume_entity }}
+                {% endif %}
+              manual_should_learn_endpoint: >-
+                {{ not manual_in_time_transition
+                   or manual_transition_learns_min
+                   or manual_transition_learns_max }}
               manual_learning_domain: >-
                 {{ manual_learning_entity.split('.', 1)[0] if manual_learning_entity else '' }}
           # Debounce manual endpoint learning. Each volume event gets its own
@@ -965,7 +992,7 @@ actions:
                   - condition: template
                     value_template: >-
                       {{ manual_differs_from_expected
-                         and not manual_in_time_transition
+                         and manual_should_learn_endpoint
                          and learn_manual_volume_changes
                          and manual_learning_domain in ['input_number', 'number'] }}
                 sequence:
@@ -1903,7 +1930,8 @@ actions:
           - variables:
               fade_phase: >-
                 {{ 'before' if before_transition_active else 'after' }}
-              fade_interrupted_bars: []
+              fade_held_bars: []
+              fade_endpoint_stop_bars: []
               fade_policy_grace_seconds: >-
                 {{ [10, (handoff_transition_seconds | int) + 10] | max }}
           - repeat:
@@ -1996,39 +2024,65 @@ actions:
                           fade_extra_low: >-
                             {{ fade_binary_low or fade_tts_low or fade_voice_low
                                or fade_night_low or fade_list_low }}
+                          fade_live_min_volume: >-
+                            {% if min_volume_entity %}
+                              {% set raw = states(min_volume_entity)
+                                   | float(min_volume_value | float(20)) %}
+                              {% set scale = state_attr(min_volume_entity, 'max') | float(0) %}
+                              {% set normalized = raw / 100
+                                   if scale > 1.5 or raw > 1.5 else raw %}
+                            {% else %}
+                              {% set normalized = (min_volume_value | float(20)) / 100 %}
+                            {% endif %}
+                            {{ [[normalized, 0.0] | max, 1.0] | min }}
+                          fade_live_global_max: >-
+                            {% if max_volume_entity %}
+                              {% set raw = states(max_volume_entity)
+                                   | float(max_volume_value | float(50)) %}
+                              {% set scale = state_attr(max_volume_entity, 'max') | float(0) %}
+                              {% set normalized = raw / 100
+                                   if scale > 1.5 or raw > 1.5 else raw %}
+                            {% else %}
+                              {% set normalized = (max_volume_value | float(50)) / 100 %}
+                            {% endif %}
+                            {{ [fade_live_min_volume,
+                                [[normalized, 0.0] | max, 1.0] | min] | max }}
                           fade_zone_max_candidate: >-
                             {% if fade_zone_volume_entity %}
                               {% set scale = state_attr(fade_zone_volume_entity, 'max') | float(0) %}
-                              {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
+                              {% set fallback = fade_live_global_max * 100
+                                   if scale > 1.5 else fade_live_global_max %}
                               {% set raw = states(fade_zone_volume_entity) | float(fallback) %}
                               {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
                               {{ [[normalized, 0.0] | max, 1.0] | min }}
                             {% else %}
-                              {{ max_volume }}
+                              {{ fade_live_global_max }}
                             {% endif %}
                           fade_bar_max_volume: >-
-                            {{ [min_volume, [fade_zone_max_candidate, max_volume] | min] | max }}
+                            {{ [fade_live_min_volume,
+                                [fade_zone_max_candidate, fade_live_global_max] | min] | max }}
                           fade_scheduled_volume: >-
                             {% if fade_phase == 'before' and transition_before_seconds > 0 %}
                               {% set progress = 1 - (fade_seconds_until_start / transition_before_seconds) %}
                               {{ fade_bar_max_volume
-                                 - ((fade_bar_max_volume - min_volume) * progress) }}
+                                 - ((fade_bar_max_volume - fade_live_min_volume) * progress) }}
                             {% elif fade_phase == 'after' and transition_after_seconds > 0 %}
                               {% set progress = fade_seconds_since_end / transition_after_seconds %}
-                              {{ min_volume
-                                 + ((fade_bar_max_volume - min_volume) * progress) }}
+                              {{ fade_live_min_volume
+                                 + ((fade_bar_max_volume - fade_live_min_volume) * progress) }}
                             {% else %}
-                              {{ min_volume if fade_phase == 'before' else fade_bar_max_volume }}
+                              {{ fade_live_min_volume
+                                 if fade_phase == 'before' else fade_bar_max_volume }}
                             {% endif %}
                           fade_previous_scheduled_volume: >-
                             {% if fade_phase == 'before' and transition_before_seconds > 0 %}
-                              {% set step = ((fade_bar_max_volume - min_volume) * 5
+                              {% set step = ((fade_bar_max_volume - fade_live_min_volume) * 5
                                              / transition_before_seconds) %}
                               {{ [fade_bar_max_volume, fade_scheduled_volume + step] | min }}
                             {% elif fade_phase == 'after' and transition_after_seconds > 0 %}
-                              {% set step = ((fade_bar_max_volume - min_volume) * 5
+                              {% set step = ((fade_bar_max_volume - fade_live_min_volume) * 5
                                              / transition_after_seconds) %}
-                              {{ [min_volume, fade_scheduled_volume - step] | max }}
+                              {{ [fade_live_min_volume, fade_scheduled_volume - step] | max }}
                             {% else %}
                               {{ fade_scheduled_volume }}
                             {% endif %}
@@ -2053,14 +2107,11 @@ actions:
                                 {% set ns.recent = true %}
                               {% endif %}
                             {% endfor %}
-                            {% for entity in [min_volume_entity, max_volume_entity, fade_zone_volume_entity] %}
-                              {% if entity %}
-                                {% set obj = expand(entity) | first %}
-                                {% if obj is not none and as_timestamp(obj.last_changed) >= cutoff %}
-                                  {% set ns.recent = true %}
-                                {% endif %}
-                              {% endif %}
-                            {% endfor %}
+                            {# Volume endpoint helpers are intentionally excluded here:
+                               a manual fade adjustment may learn one after three
+                               seconds and the active fade must still recognize the
+                               user's hold instead of treating that helper echo as a
+                               new policy event. #}
                             {% set bar_obj = expand(bar) | first %}
                             {% if bar_obj is not none
                                   and is_state(bar, 'on')
@@ -2068,45 +2119,84 @@ actions:
                               {% set ns.recent = true %}
                             {% endif %}
                             {{ ns.recent }}
-                          fade_manual_mismatch: >-
+                          fade_new_manual_hold: >-
                             {{ not fade_extra_low
                                and fade_current_volume >= 0
+                               and bar not in fade_held_bars
                                and not fade_recent_policy_change
                                and (fade_current_volume
                                     - fade_previous_scheduled_volume) | abs > 0.015 }}
+                          fade_new_endpoint_stop: >-
+                            {{ fade_new_manual_hold
+                               and (
+                                 (fade_phase == 'before'
+                                  and fade_current_volume
+                                      > fade_previous_scheduled_volume + 0.015)
+                                 or
+                                 (fade_phase == 'after'
+                                  and fade_current_volume
+                                      < fade_previous_scheduled_volume - 0.015)
+                               ) }}
+                      - if:
+                          - condition: template
+                            value_template: "{{ fade_new_manual_hold }}"
+                        then:
+                          - variables:
+                              fade_held_bars: "{{ fade_held_bars + [bar] }}"
                       - if:
                           - condition: template
                             value_template: >-
-                              {{ fade_manual_mismatch and bar not in fade_interrupted_bars }}
+                              {{ fade_new_endpoint_stop
+                                 and bar not in fade_endpoint_stop_bars }}
                         then:
                           - variables:
-                              fade_interrupted_bars: >-
-                                {{ fade_interrupted_bars + [bar] }}
+                              fade_endpoint_stop_bars: >-
+                                {{ fade_endpoint_stop_bars + [bar] }}
+                      - variables:
+                          fade_hold_should_release: >-
+                            {{ bar in fade_held_bars
+                               and bar not in fade_endpoint_stop_bars
+                               and not fade_new_manual_hold
+                               and fade_current_volume >= 0
+                               and (
+                                 (fade_phase == 'before'
+                                  and fade_scheduled_volume
+                                      < fade_current_volume - 0.009)
+                                 or
+                                 (fade_phase == 'after'
+                                  and fade_scheduled_volume
+                                      > fade_current_volume + 0.009)
+                               ) }}
+                      - if:
+                          - condition: template
+                            value_template: "{{ fade_hold_should_release }}"
+                        then:
+                          - variables:
+                              fade_held_bars: >-
+                                {{ fade_held_bars | reject('equalto', bar) | list }}
                       - choose:
                           - conditions:
                               - condition: template
                                 value_template: >-
                                   {{ is_state(bar, 'on')
-                                     and bar not in fade_interrupted_bars
                                      and fade_extra_low
                                      and (fade_current_volume < 0
-                                          or (fade_current_volume - min_volume) | abs > 0.009) }}
+                                          or (fade_current_volume
+                                              - fade_live_min_volume) | abs > 0.009) }}
                             sequence:
                               - action: media_player.volume_set
                                 continue_on_error: true
                                 target:
                                   entity_id: "{{ bar }}"
                                 data:
-                                  volume_level: "{{ [[min_volume, 0.0] | max, 1.0] | min | round(2) }}"
+                                  volume_level: >-
+                                    {{ [[fade_live_min_volume, 0.0] | max, 1.0] | min | round(2) }}
                           - conditions:
                               - condition: template
                                 value_template: >-
                                   {{ is_state(bar, 'on')
-                                     and bar not in fade_interrupted_bars
+                                     and bar not in fade_held_bars
                                      and not fade_extra_low
-                                     and not (fade_recent_policy_change
-                                              and (fade_current_volume
-                                                   - fade_previous_scheduled_volume) | abs > 0.015)
                                      and (fade_current_volume < 0
                                           or (fade_current_volume
                                               - fade_scheduled_volume) | abs > 0.009) }}
@@ -2180,25 +2270,50 @@ actions:
                           {% endif %}
                           {{ ns.active }}
                     - variables:
+                        final_live_min_volume: >-
+                          {% if min_volume_entity %}
+                            {% set raw = states(min_volume_entity)
+                                 | float(min_volume_value | float(20)) %}
+                            {% set scale = state_attr(min_volume_entity, 'max') | float(0) %}
+                            {% set normalized = raw / 100
+                                 if scale > 1.5 or raw > 1.5 else raw %}
+                          {% else %}
+                            {% set normalized = (min_volume_value | float(20)) / 100 %}
+                          {% endif %}
+                          {{ [[normalized, 0.0] | max, 1.0] | min }}
+                        final_live_global_max: >-
+                          {% if max_volume_entity %}
+                            {% set raw = states(max_volume_entity)
+                                 | float(max_volume_value | float(50)) %}
+                            {% set scale = state_attr(max_volume_entity, 'max') | float(0) %}
+                            {% set normalized = raw / 100
+                                 if scale > 1.5 or raw > 1.5 else raw %}
+                          {% else %}
+                            {% set normalized = (max_volume_value | float(50)) / 100 %}
+                          {% endif %}
+                          {{ [final_live_min_volume,
+                              [[normalized, 0.0] | max, 1.0] | min] | max }}
                         final_zone_max_candidate: >-
                           {% if final_zone_entity %}
                             {% set scale = state_attr(final_zone_entity, 'max') | float(0) %}
-                            {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
+                            {% set fallback = final_live_global_max * 100
+                                 if scale > 1.5 else final_live_global_max %}
                             {% set raw = states(final_zone_entity) | float(fallback) %}
                             {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
                             {{ [[normalized, 0.0] | max, 1.0] | min }}
                           {% else %}
-                            {{ max_volume }}
+                            {{ final_live_global_max }}
                           {% endif %}
                         final_target: >-
-                          {{ [min_volume, [final_zone_max_candidate, max_volume] | min] | max }}
+                          {{ [final_live_min_volume,
+                              [final_zone_max_candidate, final_live_global_max] | min] | max }}
                         final_current: >-
                           {{ state_attr(bar, 'volume_level') | float(-1) }}
                     - if:
                         - condition: template
                           value_template: >-
                             {{ is_state(bar, 'on')
-                               and bar not in fade_interrupted_bars
+                               and bar not in fade_endpoint_stop_bars
                                and not final_low
                                and (final_current < 0
                                     or (final_current - final_target) | abs > 0.009) }}
