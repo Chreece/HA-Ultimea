@@ -2092,11 +2092,13 @@ actions:
                     bar: "{{ repeat.item }}"
                     bar_area: "{{ area_id(repeat.item) or '' }}"
                     current_source_name: "{{ state_attr(repeat.item, 'source') or '' }}"
+                - variables:
                     current_source_key: >-
                       {{ current_source_name | lower
                          | replace(' ', '')
                          | replace('-', '')
                          | replace('_', '') }}
+                - variables:
                     current_input_players: >-
                       {% if current_source_key in ['earc', 'arc',
                                                    'audioreturnchannel',
