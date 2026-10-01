@@ -1210,38 +1210,33 @@ actions:
                 {% else %}
                   {{ source_input_sound_mode }}
                 {% endif %}
-          - if:
-              - condition: template
-                value_template: "{{ apply_volume_follow }}"
-            then:
-              - variables:
-                  source_zone_matches: >-
-                    {% set ns = namespace(matches=[]) %}
-                    {% set candidates = [zone_volume_entities]
-                       if zone_volume_entities is string else zone_volume_entities %}
-                    {% if source_bar_area != '' %}
-                      {% for entity in candidates %}
-                        {% if (area_id(entity) or '') == source_bar_area %}
-                          {% set ns.matches = ns.matches + [entity] %}
-                        {% endif %}
-                      {% endfor %}
+              source_zone_matches: >-
+                {% set ns = namespace(matches=[]) %}
+                {% set candidates = [zone_volume_entities]
+                   if zone_volume_entities is string else zone_volume_entities %}
+                {% if source_bar_area != '' %}
+                  {% for entity in candidates %}
+                    {% if (area_id(entity) or '') == source_bar_area %}
+                      {% set ns.matches = ns.matches + [entity] %}
                     {% endif %}
-                    {{ ns.matches }}
-                  source_zone_entity: >-
-                    {{ source_zone_matches[0]
-                       if source_zone_matches | length == 1 else '' }}
-                  source_zone_candidate: >-
-                    {% if source_zone_entity %}
-                      {% set scale = state_attr(source_zone_entity, 'max') | float(0) %}
-                      {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
-                      {% set raw = states(source_zone_entity) | float(fallback) %}
-                      {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
-                      {{ [[normalized, 0.0] | max, 1.0] | min }}
-                    {% else %}
-                      {{ max_volume }}
-                    {% endif %}
-                  source_effective_max: >-
-                    {{ [min_volume, [source_zone_candidate, max_volume] | min] | max }}
+                  {% endfor %}
+                {% endif %}
+                {{ ns.matches }}
+              source_zone_entity: >-
+                {{ source_zone_matches[0]
+                   if source_zone_matches | length == 1 else '' }}
+              source_zone_candidate: >-
+                {% if source_zone_entity %}
+                  {% set scale = state_attr(source_zone_entity, 'max') | float(0) %}
+                  {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
+                  {% set raw = states(source_zone_entity) | float(fallback) %}
+                  {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+                  {{ [[normalized, 0.0] | max, 1.0] | min }}
+                {% else %}
+                  {{ max_volume }}
+                {% endif %}
+              source_effective_max: >-
+                {{ [min_volume, [source_zone_candidate, max_volume] | min] | max }}
           - delay:
               milliseconds: 750
           - variables:
