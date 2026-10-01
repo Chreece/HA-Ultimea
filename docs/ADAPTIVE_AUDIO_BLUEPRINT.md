@@ -39,10 +39,23 @@ Source follow is event-driven. A manual source choice is not continuously fought
 the blueprint acts again only when the configured selector changes, Home Assistant
 starts, or that soundbar turns on.
 
-### Media-player source routing
+### Assistant and media-player source routing
 
-Source routing is intentionally simple: assign media players to the ULTIMEA input
-they use. The blueprint exposes six entity groups:
+Source routing supports both Assist Satellites and media players.
+
+For assistants, select entities under **Assistants → soundbar input** and choose
+one **Assistant input**. While a selected `assist_satellite` is in any active
+state (anything other than `idle`, `unknown`, or `unavailable`), that input
+takes priority for its target soundbar. When all selected assistants return to
+`idle`, the blueprint immediately recalculates the normal media-player/fallback
+route.
+
+Assistant source routing is independent from the existing **Voice assistants**
+selection used for volume ducking. You can select the same Assist Satellite in
+both places when you want both behaviors.
+
+Media-player routing remains intentionally simple: assign media players to the
+ULTIMEA input they use. The blueprint exposes six entity groups:
 
 - **Media players → eARC**
 - **Media players → HDMI**
@@ -54,22 +67,27 @@ they use. The blueprint exposes six entity groups:
 Put each media player in only one source group.
 
 If the blueprint controls **one ULTIMEA soundbar**, no Home Assistant area
-assignment is required for source routing: every mapped media player controls that
-selected bar directly.
+assignment is required for source routing: every mapped assistant/media player
+controls that selected bar directly.
 
 If the blueprint controls **multiple ULTIMEA soundbars**, areas are used only to
-disambiguate which bar a mapped media player controls. In that case, the player
-and target soundbar must share an area.
+disambiguate which bar a mapped assistant/media player controls. In that case,
+the assistant/player and target soundbar must share an area.
 
-When a mapped media player enters `playing`, its target soundbar switches to that
-player's mapped source. If more than one mapped media player affecting the same bar
-is playing, the player that most recently entered the `playing` state wins. If
-that player stops or pauses, the next most-recent still-playing mapped player takes
-over automatically.
+An active mapped assistant always has priority over media-player routing. While
+the assistant remains active, media-player state changes cannot take the source
+away from the Assistant input.
 
-If no mapped media player is playing, **Fallback source when no mapped media player
-is playing** is used. This is one global source selector (`eARC`, `HDMI`, `Optical`,
-`AUX`, `Bluetooth`, `USB`, or `No change`) and does not use Home Assistant areas.
+When no mapped assistant is active, a mapped media player entering `playing`
+switches its target soundbar to that player's mapped source. If more than one
+mapped media player affecting the same bar is playing, the player that most
+recently entered the `playing` state wins. If that player stops or pauses, the
+next most-recent still-playing mapped player takes over automatically.
+
+If no mapped assistant is active and no mapped media player is playing,
+**Fallback source when no mapped assistant or media player is active** is used.
+This is one global source selector (`eARC`, `HDMI`, `Optical`, `AUX`,
+`Bluetooth`, `USB`, or `No change`) and does not use Home Assistant areas.
 `No change` leaves the current source untouched. For backward compatibility, the
 older area-paired audio-input selector is consulted only when this new fallback is
 set to `No change`.
