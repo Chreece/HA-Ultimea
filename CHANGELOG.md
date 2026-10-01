@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.01.3
+
+### Fixed
+
+- Fixed a parallel automation race where one media-player state change could start source routing and Connected content / EQ follow at the same time.
+- Connected-content EQ runs now wait up to three seconds for the soundbar's live source to reach that media player's mapped input before evaluating EQ.
+- EQ eligibility and content are rebuilt from current live source state after the routing barrier, so an old-input run cannot overwrite the new input's one-shot default sound mode.
+- This specifically prevents cases such as eARC/TV content deciding Movie after the automation has already routed the bar to AUX and applied AUX's Music default.
+
 ## 2026.10.01.2
 
 ### Fixed
