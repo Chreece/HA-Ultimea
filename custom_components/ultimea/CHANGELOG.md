@@ -4,6 +4,16 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.01.2
+
+### Fixed
+
+- Connected content / EQ follow is now gated by the soundbar's currently active input.
+- A media player can drive Movie/Music/Voice/Sport/Game only when it is selected under **Devices connected to the soundbar** and is also assigned under **Media players →** the bar's current input.
+- Connected-content events from players mapped to another input are ignored.
+- Classifier entities and the optional AI/snapshot hook participate only when the current input has at least one eligible Connected content media player.
+- With multiple soundbars, Home Assistant area matching continues to disambiguate which bar an eligible current-input player belongs to.
+
 ## 2026.10.01.1
 
 ### Fixed
