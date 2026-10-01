@@ -102,13 +102,18 @@ Each physical ULTIMEA input has an optional sound-mode mapping:
 Each mapping can be **Automatic / no input default, Movie, Music, Voice, Sport,
 Night, or Game** and defaults to **Automatic / no input default**.
 
-A configured value is only the **starting/default mode for that input**. When the
-soundbar's actual source changes—whether from the blueprint, Home Assistant, the
-physical remote, or the ULTIMEA app—the mapping for that input is applied once
-after the source has settled. For example, **AUX → Music** selects Music when the
-bar enters AUX. If the user, EQ/content classification, Night policy, or another
-automation later changes Music to another mode, that new mode is accepted and the
-AUX default is not re-applied until the bar leaves AUX and later comes back.
+A configured value is only the **starting/default mode for that input**. When this
+blueprint itself routes the bar to a source, it applies that input's default in
+the **same source-routing run**, immediately after the source command succeeds.
+It does not depend on a second source-change event. For source changes made by
+Home Assistant, the physical remote, or the ULTIMEA app, the source-change listener
+seeds the default immediately on the source event; the later 750 ms wait is used
+only for source-specific volume recall/clamping.
+
+For example, **AUX → Music** selects Music when the bar enters AUX. If the user,
+EQ/content classification, Night policy, or another automation later changes Music
+to another mode, that new mode is accepted and the AUX default is not re-applied
+until the bar leaves AUX and later comes back.
 
 **Automatic / no input default** means the source change itself does not seed a
 mode. The normal Night/EQ/content policy may therefore choose a mode immediately
