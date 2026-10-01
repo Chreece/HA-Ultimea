@@ -505,9 +505,11 @@ blueprint:
           name: Devices connected to the soundbar
           description: >-
             Select TVs, streamers, consoles or other media_player entities whose
-            current app/content should drive the ULTIMEA sound mode. Area
-            assignment is used to pair them to each soundbar; entities without an
-            area are treated as global.
+            current app/content may drive the ULTIMEA sound mode. A selected player
+            is eligible only while the soundbar is on the same input that player is
+            assigned to above under Media players → eARC/HDMI/Optical/AUX/
+            Bluetooth/USB. With multiple soundbars, Home Assistant area matching
+            also disambiguates which bar the player belongs to.
           default: []
           selector:
             entity:
@@ -518,8 +520,10 @@ blueprint:
           name: Optional content / AI classifier entities
           description: >-
             Optional entities whose state or common label attributes contain a
-            content class such as Movie, Music, Voice, Sport or Game. Area
-            assignment is respected; entities without an area are global.
+            content class such as Movie, Music, Voice, Sport or Game. Classifier
+            results participate only when the current soundbar input has at least
+            one eligible Connected content media player. Area assignment is still
+            respected for multiple soundbars.
           default: []
           selector:
             entity:
@@ -527,10 +531,11 @@ blueprint:
         ai_content_actions:
           name: Optional snapshot / AI classification actions
           description: >-
-            Optional actions run when a connected media player changes. Use this
-            hook to take a snapshot and call any AI/vision integration, then write
-            the result to one of the classifier entities above. Leave empty when
-            media metadata is enough.
+            Optional actions run when an eligible Connected content media player
+            changes while its mapped input is currently active. Use this hook to
+            take a snapshot and call any AI/vision integration, then write the
+            result to one of the classifier entities above. Leave empty when media
+            metadata is enough.
           default: []
           selector:
             action: {}
@@ -619,7 +624,9 @@ blueprint:
             boolean: {}
         apply_eq_follow:
           name: EQ follow
-          description: Select Movie/Music/Voice/Sport/Game from connected content metadata/classification.
+          description: >-
+            Select Movie/Music/Voice/Sport/Game only from Connected content players
+            mapped to the soundbar's currently active input.
           default: false
           selector:
             boolean: {}
