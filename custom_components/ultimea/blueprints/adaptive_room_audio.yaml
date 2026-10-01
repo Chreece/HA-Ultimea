@@ -1336,6 +1336,17 @@ actions:
                    'voice_change', 'night_override_change'
                  ] or bar_became_on) }}
         sequence:
+          # A media-player state change can match both a source-routing trigger
+          # and connected-content EQ trigger in parallel. Give source routing a
+          # short head start, then evaluate the bar's source from live state so a
+          # stale run cannot apply EQ for the input that was active before routing.
+          - if:
+              - condition: template
+                value_template: >-
+                  {{ trigger_id in ['connected_change', 'classifier_change'] }}
+            then:
+              - delay:
+                  milliseconds: 1000
           - repeat:
               for_each: "{{ ultimea_players }}"
               sequence:
