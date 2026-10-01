@@ -26,13 +26,12 @@ blueprint:
     Home Assistant stores the selected entity ID. Exactly one selector must match
     a soundbar area, so unassigned or ambiguous selectors never act globally.
 
-    Optional media-player source routing maps media players to ULTIMEA inputs.
-    When a configured media player is playing, the soundbar in the same Home
-    Assistant area switches to that player's mapped source. If multiple mapped
-    media players in one area are playing, the one that most recently entered the
-    playing state wins. When it stops, the next most-recent still-playing player
-    takes over. If none are playing, the normal area-paired audio-input selector
-    remains the fallback.
+    Optional source routing supports both Assist Satellites and media players.
+    An active mapped assistant temporarily takes priority and switches the bar to
+    the configured Assistant input. When all mapped assistants return to idle,
+    playing media-player mappings resume; the most recently started mapped player
+    wins. If neither an assistant nor media player is active, the configured
+    fallback / legacy area-paired audio-input selector is used.
 
     Optional per-zone normal-volume entities use the same area matching. Exactly
     one numeric entity in a soundbar's area overrides the global maximum/normal
