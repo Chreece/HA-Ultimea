@@ -4,7 +4,8 @@ blueprint:
     Room-aware automation for ULTIMEA soundbars. It can learn a normal and quiet
     volume, lower volume during quiet hours / TTS / active binary conditions /
     Assist activity, fade only around the quiet-hours boundaries, select Night
-    mode, and follow the content playing on a connected media player. Manual
+    mode, apply an optional sound mode per physical input, and follow the content
+    playing on a connected media player. Manual
     volume learning is debounced: the final unchanged value is learned only after
     three seconds, and the resulting helper update is treated as a learning echo
     rather than a new command to move the soundbar.
@@ -175,6 +176,108 @@ blueprint:
                 - AUX
                 - Bluetooth
                 - USB
+        sound_mode_earc:
+          name: Sound mode → eARC / ARC
+          description: >-
+            Sound mode to select when the ULTIMEA bar changes to eARC / ARC.
+            No change leaves the current sound mode untouched. Night policy
+            still takes priority while quiet/night conditions are active.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Night
+                - Game
+        sound_mode_hdmi:
+          name: Sound mode → HDMI
+          description: >-
+            Sound mode to select when the ULTIMEA bar changes to HDMI.
+            No change leaves the current sound mode untouched. Night policy
+            still takes priority while quiet/night conditions are active.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Night
+                - Game
+        sound_mode_optical:
+          name: Sound mode → Optical
+          description: >-
+            Sound mode to select when the ULTIMEA bar changes to Optical.
+            No change leaves the current sound mode untouched. Night policy
+            still takes priority while quiet/night conditions are active.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Night
+                - Game
+        sound_mode_aux:
+          name: Sound mode → AUX
+          description: >-
+            Sound mode to select when the ULTIMEA bar changes to AUX.
+            No change leaves the current sound mode untouched. Night policy
+            still takes priority while quiet/night conditions are active.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Night
+                - Game
+        sound_mode_bluetooth:
+          name: Sound mode → Bluetooth
+          description: >-
+            Sound mode to select when the ULTIMEA bar changes to Bluetooth.
+            No change leaves the current sound mode untouched. Night policy
+            still takes priority while quiet/night conditions are active.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Night
+                - Game
+        sound_mode_usb:
+          name: Sound mode → USB
+          description: >-
+            Sound mode to select when the ULTIMEA bar changes to USB.
+            No change leaves the current sound mode untouched. Night policy
+            still takes priority while quiet/night conditions are active.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - Movie
+                - Music
+                - Voice
+                - Sport
+                - Night
+                - Game
         min_volume_value:
           name: Minimum volume
           description: >-
@@ -491,8 +594,8 @@ blueprint:
             entity. The final manual value must remain unchanged for three seconds
             before it is learned, preventing intermediate knob/button steps from
             triggering the old maximum again. Manual changes during a quiet-hours
-            fade never change an endpoint; they stop that fade for the affected
-            soundbar.
+            fade follow the directional quiet-fade rules described below; endpoint
+            learning still settles for three seconds before being saved.
           default: false
           selector:
             boolean: {}
@@ -519,6 +622,12 @@ variables:
   source_players_bluetooth: !input source_players_bluetooth
   source_players_usb: !input source_players_usb
   source_fallback: !input source_fallback
+  sound_mode_earc: !input sound_mode_earc
+  sound_mode_hdmi: !input sound_mode_hdmi
+  sound_mode_optical: !input sound_mode_optical
+  sound_mode_aux: !input sound_mode_aux
+  sound_mode_bluetooth: !input sound_mode_bluetooth
+  sound_mode_usb: !input sound_mode_usb
   min_volume_value: !input min_volume_value
   min_volume_source_input: !input min_volume_helper
   max_volume_value: !input max_volume_value
@@ -1040,15 +1149,15 @@ actions:
                               value: "{{ manual_settled_learning_value }}"
           - stop: Manual ULTIMEA volume change handled without fighting the user.
 
-  # A source change may make the physical soundbar recall a source-specific
-  # volume. Let that hardware update settle briefly, then clamp only downward if
-  # it exceeds this bar's effective normal maximum. Never raise volume here.
+  # A source change can recall both source-specific volume and sound-mode state
+  # on the physical bar. Let it settle once, clamp volume only downward when
+  # required, then apply the configured per-input sound mode. Night policy takes
+  # priority over an input mapping while quiet/night conditions are active.
   - choose:
       - conditions:
           - condition: template
             value_template: >-
-              {{ apply_volume_follow
-                 and trigger_id == 'bar_source_change'
+              {{ trigger_id == 'bar_source_change'
                  and trigger.from_state is not none
                  and trigger.to_state is not none
                  and trigger.from_state.attributes.get('source')
@@ -1057,42 +1166,96 @@ actions:
           - variables:
               source_bar: "{{ trigger_entity }}"
               source_bar_area: "{{ area_id(trigger_entity) or '' }}"
-              source_zone_matches: >-
-                {% set ns = namespace(matches=[]) %}
-                {% set candidates = [zone_volume_entities]
-                   if zone_volume_entities is string else zone_volume_entities %}
-                {% if source_bar_area != '' %}
-                  {% for entity in candidates %}
-                    {% if (area_id(entity) or '') == source_bar_area %}
-                      {% set ns.matches = ns.matches + [entity] %}
-                    {% endif %}
-                  {% endfor %}
-                {% endif %}
-                {{ ns.matches }}
-              source_zone_entity: >-
-                {{ source_zone_matches[0]
-                   if source_zone_matches | length == 1 else '' }}
-              source_zone_candidate: >-
-                {% if source_zone_entity %}
-                  {% set scale = state_attr(source_zone_entity, 'max') | float(0) %}
-                  {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
-                  {% set raw = states(source_zone_entity) | float(fallback) %}
-                  {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
-                  {{ [[normalized, 0.0] | max, 1.0] | min }}
+              source_name: >-
+                {{ trigger.to_state.attributes.get('source', '') | string | trim }}
+              source_key: >-
+                {{ source_name | lower
+                   | replace(' ', '')
+                   | replace('-', '')
+                   | replace('_', '') }}
+              source_input_sound_mode: >-
+                {% if source_key in ['earc', 'arc',
+                                      'audioreturnchannel',
+                                      'enhancedreturnchannel'] %}
+                  {{ sound_mode_earc }}
+                {% elif source_key in ['hdmi', 'hdmiin'] %}
+                  {{ sound_mode_hdmi }}
+                {% elif source_key in ['optical', 'opt', 'spdif', 'toslink'] %}
+                  {{ sound_mode_optical }}
+                {% elif source_key in ['aux', 'auxin', 'linein'] %}
+                  {{ sound_mode_aux }}
+                {% elif source_key in ['bluetooth', 'bt'] %}
+                  {{ sound_mode_bluetooth }}
+                {% elif source_key in ['usb', 'usbin'] %}
+                  {{ sound_mode_usb }}
                 {% else %}
-                  {{ max_volume }}
+                  No change
                 {% endif %}
-              source_effective_max: >-
-                {{ [min_volume, [source_zone_candidate, max_volume] | min] | max }}
+              source_night_override_active: >-
+                {% set ns = namespace(active=false) %}
+                {% for entity in night_mode_entities %}
+                  {% set entity_area = area_id(entity) or '' %}
+                  {% if is_state(entity, 'on')
+                        and (entity_area == ''
+                             or (source_bar_area != ''
+                                 and entity_area == source_bar_area)) %}
+                    {% set ns.active = true %}
+                  {% endif %}
+                {% endfor %}
+                {{ ns.active }}
+              source_requested_sound_mode: >-
+                {% if apply_night_mode
+                      and (in_quiet_hours or source_night_override_active) %}
+                  Night
+                {% else %}
+                  {{ source_input_sound_mode }}
+                {% endif %}
+          - if:
+              - condition: template
+                value_template: "{{ apply_volume_follow }}"
+            then:
+              - variables:
+                  source_zone_matches: >-
+                    {% set ns = namespace(matches=[]) %}
+                    {% set candidates = [zone_volume_entities]
+                       if zone_volume_entities is string else zone_volume_entities %}
+                    {% if source_bar_area != '' %}
+                      {% for entity in candidates %}
+                        {% if (area_id(entity) or '') == source_bar_area %}
+                          {% set ns.matches = ns.matches + [entity] %}
+                        {% endif %}
+                      {% endfor %}
+                    {% endif %}
+                    {{ ns.matches }}
+                  source_zone_entity: >-
+                    {{ source_zone_matches[0]
+                       if source_zone_matches | length == 1 else '' }}
+                  source_zone_candidate: >-
+                    {% if source_zone_entity %}
+                      {% set scale = state_attr(source_zone_entity, 'max') | float(0) %}
+                      {% set fallback = max_volume * 100 if scale > 1.5 else max_volume %}
+                      {% set raw = states(source_zone_entity) | float(fallback) %}
+                      {% set normalized = raw / 100 if scale > 1.5 or raw > 1.5 else raw %}
+                      {{ [[normalized, 0.0] | max, 1.0] | min }}
+                    {% else %}
+                      {{ max_volume }}
+                    {% endif %}
+                  source_effective_max: >-
+                    {{ [min_volume, [source_zone_candidate, max_volume] | min] | max }}
           - delay:
               milliseconds: 750
           - variables:
               source_live_volume: >-
                 {{ state_attr(source_bar, 'volume_level') | float(-1) }}
+              source_current_sound_mode: >-
+                {{ state_attr(source_bar, 'sound_mode') or '' }}
+              source_supported_sound_modes: >-
+                {{ state_attr(source_bar, 'sound_mode_list') | default([], true) }}
           - if:
               - condition: template
                 value_template: >-
-                  {{ is_state(source_bar, 'on')
+                  {{ apply_volume_follow
+                     and is_state(source_bar, 'on')
                      and source_live_volume >= 0
                      and source_live_volume - source_effective_max > 0.009 }}
             then:
@@ -1102,7 +1265,21 @@ actions:
                   entity_id: "{{ source_bar }}"
                 data:
                   volume_level: "{{ [[source_effective_max, 0.0] | max, 1.0] | min | round(2) }}"
-          - stop: ULTIMEA source change handled without raising volume.
+          - if:
+              - condition: template
+                value_template: >-
+                  {{ is_state(source_bar, 'on')
+                     and source_requested_sound_mode != 'No change'
+                     and source_requested_sound_mode in source_supported_sound_modes
+                     and source_current_sound_mode != source_requested_sound_mode }}
+            then:
+              - action: media_player.select_sound_mode
+                continue_on_error: true
+                target:
+                  entity_id: "{{ source_bar }}"
+                data:
+                  sound_mode: "{{ source_requested_sound_mode }}"
+          - stop: ULTIMEA source change handled.
 
   # Ignore unrelated ULTIMEA attribute changes. The one exception is a bar
   # becoming ON, when the current room policy should be applied once.
