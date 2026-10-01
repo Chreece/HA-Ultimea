@@ -79,6 +79,12 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "source_players_bluetooth",
         "source_players_usb",
         "source_fallback",
+        "sound_mode_earc",
+        "sound_mode_hdmi",
+        "sound_mode_optical",
+        "sound_mode_aux",
+        "sound_mode_bluetooth",
+        "sound_mode_usb",
         "quiet_start",
         "quiet_end",
         "transition_before",
@@ -147,6 +153,27 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "Bluetooth",
         "USB",
     ]
+
+    expected_input_modes = [
+        "No change",
+        "Movie",
+        "Music",
+        "Voice",
+        "Sport",
+        "Night",
+        "Game",
+    ]
+    for key in (
+        "sound_mode_earc",
+        "sound_mode_hdmi",
+        "sound_mode_optical",
+        "sound_mode_aux",
+        "sound_mode_bluetooth",
+        "sound_mode_usb",
+    ):
+        assert inputs[key]["default"] == "No change"
+        assert inputs[key]["selector"]["select"]["options"] == expected_input_modes
+
     assert inputs["handoff_transition"]["default"]["seconds"] == 15
 
 
@@ -230,7 +257,13 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "bar_source_change" in text
     assert "source_effective_max" in text
     assert "source_live_volume - source_effective_max > 0.009" in text
-    assert "ULTIMEA source change handled without raising volume." in text
+    assert "ULTIMEA source change handled." in text
+    assert "source_input_sound_mode" in text
+    assert "source_requested_sound_mode" in text
+    assert "source_night_override_active" in text
+    assert "source_supported_sound_modes" in text
+    assert "source_requested_sound_mode in source_supported_sound_modes" in text
+    assert "sound_mode: \"{{ source_requested_sound_mode }}\"" in text
     assert "manual_scheduled_volume" in text
     assert "manual_settled_volume" in text
     assert "manual_volume_stable_after_delay" in text
