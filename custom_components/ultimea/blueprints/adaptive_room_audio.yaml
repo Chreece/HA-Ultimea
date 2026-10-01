@@ -1251,29 +1251,13 @@ actions:
                 {% endif %}
               source_effective_max: >-
                 {{ [min_volume, [source_zone_candidate, max_volume] | min] | max }}
-          - delay:
-              milliseconds: 750
-          - variables:
-              source_live_volume: >-
-                {{ state_attr(source_bar, 'volume_level') | float(-1) }}
               source_current_sound_mode: >-
                 {{ state_attr(source_bar, 'sound_mode') or '' }}
               source_supported_sound_modes: >-
                 {{ state_attr(source_bar, 'sound_mode_list') | default([], true) }}
-          - if:
-              - condition: template
-                value_template: >-
-                  {{ apply_volume_follow
-                     and is_state(source_bar, 'on')
-                     and source_live_volume >= 0
-                     and source_live_volume - source_effective_max > 0.009 }}
-            then:
-              - action: media_player.volume_set
-                continue_on_error: true
-                target:
-                  entity_id: "{{ source_bar }}"
-                data:
-                  volume_level: "{{ [[source_effective_max, 0.0] | max, 1.0] | min | round(2) }}"
+          # Seed the input default immediately on the source event. Do not delay
+          # this until the source-volume recall settles, otherwise a one-shot
+          # default can become a late override of a manual/content mode change.
           - if:
               - condition: template
                 value_template: >-
@@ -1288,6 +1272,25 @@ actions:
                   entity_id: "{{ source_bar }}"
                 data:
                   sound_mode: "{{ source_requested_sound_mode }}"
+          - delay:
+              milliseconds: 750
+          - variables:
+              source_live_volume: >-
+                {{ state_attr(source_bar, 'volume_level') | float(-1) }}
+          - if:
+              - condition: template
+                value_template: >-
+                  {{ apply_volume_follow
+                     and is_state(source_bar, 'on')
+                     and source_live_volume >= 0
+                     and source_live_volume - source_effective_max > 0.009 }}
+            then:
+              - action: media_player.volume_set
+                continue_on_error: true
+                target:
+                  entity_id: "{{ source_bar }}"
+                data:
+                  volume_level: "{{ [[source_effective_max, 0.0] | max, 1.0] | min | round(2) }}"
           # A configured per-input default is a one-shot seed for this source.
           # Once seeded (or already satisfied), stop here so content/EQ does not
           # immediately overwrite it in the same source-change event. With
@@ -1938,6 +1941,51 @@ actions:
                       {% else %}
                         {{ requested_source }}
                       {% endif %}
+                    routed_input_sound_mode: >-
+                      {% set key = effective_requested_source | lower
+                           | replace(' ', '')
+                           | replace('-', '')
+                           | replace('_', '') %}
+                      {% if key in ['earc', 'arc'] %}
+                        {{ sound_mode_earc }}
+                      {% elif key in ['hdmi', 'hdmiin'] %}
+                        {{ sound_mode_hdmi }}
+                      {% elif key in ['optical', 'opt', 'spdif', 'toslink'] %}
+                        {{ sound_mode_optical }}
+                      {% elif key in ['aux', 'auxin', 'linein'] %}
+                        {{ sound_mode_aux }}
+                      {% elif key in ['bluetooth', 'bt'] %}
+                        {{ sound_mode_bluetooth }}
+                      {% elif key in ['usb', 'usbin'] %}
+                        {{ sound_mode_usb }}
+                      {% else %}
+                        Automatic / no input default
+                      {% endif %}
+                    routed_night_override_active: >-
+                      {% set ns = namespace(active=false) %}
+                      {% for entity in night_mode_entities %}
+                        {% set entity_area = area_id(entity) or '' %}
+                        {% if is_state(entity, 'on')
+                              and (entity_area == ''
+                                   or (bar_area != ''
+                                       and entity_area == bar_area)) %}
+                          {% set ns.active = true %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.active }}
+                    routed_requested_sound_mode: >-
+                      {% if apply_night_mode
+                            and (in_quiet_hours or routed_night_override_active) %}
+                        Night
+                      {% elif routed_input_sound_mode != 'Automatic / no input default' %}
+                        {{ routed_input_sound_mode }}
+                      {% else %}
+                        {{ '' }}
+                      {% endif %}
+                    routed_supported_sound_modes: >-
+                      {{ state_attr(bar, 'sound_mode_list') | default([], true) }}
+                    routed_current_sound_mode: >-
+                      {{ state_attr(bar, 'sound_mode') or '' }}
                 - choose:
                     - conditions:
                         - condition: template
@@ -1954,6 +2002,23 @@ actions:
                             entity_id: "{{ bar }}"
                           data:
                             source: "{{ effective_requested_source }}"
+                        # This automation already knows which input it requested,
+                        # so seed that input's default in the same routing run.
+                        # The bar_source_change listener remains the fallback for
+                        # remote/app/manual source changes.
+                        - if:
+                            - condition: template
+                              value_template: >-
+                                {{ routed_requested_sound_mode != ''
+                                   and routed_requested_sound_mode in routed_supported_sound_modes
+                                   and routed_current_sound_mode != routed_requested_sound_mode }}
+                          then:
+                            - action: media_player.select_sound_mode
+                              continue_on_error: true
+                              target:
+                                entity_id: "{{ bar }}"
+                              data:
+                                sound_mode: "{{ routed_requested_sound_mode }}"
 
   # Optional provider-agnostic content/AI hook. It is intentionally not tied to
   # a specific camera, LLM, vision provider or service contract.
