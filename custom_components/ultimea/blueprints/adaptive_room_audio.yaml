@@ -2092,6 +2092,79 @@ actions:
                                 'classifier_change', 'bar_source_change']
                  or bar_became_on }}
         sequence:
+          # The same media-player transition can fire both source routing and EQ
+          # follow as parallel runs. For connected-content events, wait until the
+          # physical bar's live source reaches that player's mapped input (or time
+          # out) before calculating EQ. This prevents an old-source EQ snapshot
+          # from overwriting the new input's one-shot default mode.
+          - if:
+              - condition: template
+                value_template: "{{ trigger_id == 'connected_change' }}"
+            then:
+              - wait_template: >-
+                  {% set ns = namespace(target='', matched=false) %}
+                  {% set p = trigger_entity %}
+                  {% set earc = [source_players_earc]
+                       if source_players_earc is string else source_players_earc %}
+                  {% set hdmi = [source_players_hdmi]
+                       if source_players_hdmi is string else source_players_hdmi %}
+                  {% set optical = [source_players_optical]
+                       if source_players_optical is string else source_players_optical %}
+                  {% set aux = [source_players_aux]
+                       if source_players_aux is string else source_players_aux %}
+                  {% set bt = [source_players_bluetooth]
+                       if source_players_bluetooth is string else source_players_bluetooth %}
+                  {% set usb = [source_players_usb]
+                       if source_players_usb is string else source_players_usb %}
+                  {% if p in earc %}
+                    {% set ns.target = 'earc' %}
+                  {% elif p in hdmi %}
+                    {% set ns.target = 'hdmi' %}
+                  {% elif p in optical %}
+                    {% set ns.target = 'optical' %}
+                  {% elif p in aux %}
+                    {% set ns.target = 'aux' %}
+                  {% elif p in bt %}
+                    {% set ns.target = 'bluetooth' %}
+                  {% elif p in usb %}
+                    {% set ns.target = 'usb' %}
+                  {% endif %}
+                  {% if ns.target == '' %}
+                    true
+                  {% else %}
+                    {% set bars = [ultimea_players]
+                         if ultimea_players is string else ultimea_players %}
+                    {% for b in bars %}
+                      {% set b_area = area_id(b) or '' %}
+                      {% if (ultimea_players is string or ultimea_players | length == 1)
+                            or (b_area != '' and (area_id(p) or '') == b_area) %}
+                        {% set key = (state_attr(b, 'source') or '') | lower
+                             | replace(' ', '') | replace('-', '') | replace('_', '') %}
+                        {% if key in ['earc', 'arc', 'audioreturnchannel',
+                                      'enhancedreturnchannel'] %}
+                          {% set live = 'earc' %}
+                        {% elif key in ['hdmi', 'hdmiin'] %}
+                          {% set live = 'hdmi' %}
+                        {% elif key in ['optical', 'opt', 'spdif', 'toslink'] %}
+                          {% set live = 'optical' %}
+                        {% elif key in ['aux', 'auxin', 'linein'] %}
+                          {% set live = 'aux' %}
+                        {% elif key in ['bluetooth', 'bt'] %}
+                          {% set live = 'bluetooth' %}
+                        {% elif key in ['usb', 'usbin'] %}
+                          {% set live = 'usb' %}
+                        {% else %}
+                          {% set live = '' %}
+                        {% endif %}
+                        {% if live == ns.target %}
+                          {% set ns.matched = true %}
+                        {% endif %}
+                      {% endif %}
+                    {% endfor %}
+                    {{ ns.matched }}
+                  {% endif %}
+                timeout: "00:00:03"
+                continue_on_timeout: true
           - repeat:
               for_each: "{{ ultimea_players }}"
               sequence:

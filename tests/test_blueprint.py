@@ -279,6 +279,11 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "eq_input_has_connected_player" in text
     assert "trigger_entity in eq_connected_players" in text
     assert "and eq_input_has_connected_player" in text
+    assert "wait_template:" in text
+    assert "timeout: \"00:00:03\"" in text
+    assert "continue_on_timeout: true" in text
+    assert "live == ns.target" in text
+    assert "trigger_id == 'connected_change'" in text
     assert "{% for entity in eq_connected_players %}" in text
     assert "trigger_entity in mapped" in text
     assert "manual_scheduled_volume" in text

@@ -324,6 +324,14 @@ Like Night mode, EQ follow is event-driven. A manual sound-mode change is not
 periodically overwritten; a new **eligible current-input** connected-content or
 classifier event is needed before automatic EQ selection happens again.
 
+A single media-player state transition can trigger both source routing and EQ
+follow in parallel. To prevent an old-input EQ decision from landing after a new
+input default, connected-content EQ runs wait up to three seconds for the
+soundbar's **live source** to reach that media player's mapped input, then rebuild
+the eligible player set from current state. If routing moved the bar from eARC to
+AUX, a stale eARC/TV run is therefore discarded instead of changing AUX's mode
+after its default was applied.
+
 ## Optional AI / snapshot classification
 
 There is no universal Home Assistant action for "take a screenshot and classify
