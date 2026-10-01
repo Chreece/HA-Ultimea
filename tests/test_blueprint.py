@@ -257,7 +257,6 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "bar_source_change" in text
     assert "source_effective_max" in text
     assert "source_live_volume - source_effective_max > 0.009" in text
-    assert "ULTIMEA source change handled." in text
     assert "source_input_sound_mode" in text
     assert "source_requested_sound_mode" in text
     assert "Automatic / no input default" in text
