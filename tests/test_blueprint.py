@@ -259,6 +259,10 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "source_live_volume - source_effective_max > 0.009" in text
     assert "source_input_sound_mode" in text
     assert "source_requested_sound_mode" in text
+    assert "routed_input_sound_mode" in text
+    assert "routed_requested_sound_mode" in text
+    assert "routed_supported_sound_modes" in text
+    assert "routed_current_sound_mode" in text
     assert "Automatic / no input default" in text
     assert "source_input_sound_mode != 'Automatic / no input default'" in text
     assert "ULTIMEA source default sound mode handled." in text
@@ -267,6 +271,8 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "source_supported_sound_modes" in text
     assert "source_requested_sound_mode in source_supported_sound_modes" in text
     assert "sound_mode: \"{{ source_requested_sound_mode }}\"" in text
+    assert "sound_mode: \"{{ routed_requested_sound_mode }}\"" in text
+    assert "This automation already knows which input it requested" in text
     assert "manual_scheduled_volume" in text
     assert "manual_settled_volume" in text
     assert "manual_volume_stable_after_delay" in text
