@@ -26,13 +26,12 @@ blueprint:
     Home Assistant stores the selected entity ID. Exactly one selector must match
     a soundbar area, so unassigned or ambiguous selectors never act globally.
 
-    Optional media-player source routing maps media players to ULTIMEA inputs.
-    When a configured media player is playing, the soundbar in the same Home
-    Assistant area switches to that player's mapped source. If multiple mapped
-    media players in one area are playing, the one that most recently entered the
-    playing state wins. When it stops, the next most-recent still-playing player
-    takes over. If none are playing, the normal area-paired audio-input selector
-    remains the fallback.
+    Optional source routing supports both Assist Satellites and media players.
+    An active mapped assistant temporarily takes priority and switches the bar to
+    the configured Assistant input. When all mapped assistants return to idle,
+    playing media-player mappings resume; the most recently started mapped player
+    wins. If neither an assistant nor media player is active, the configured
+    fallback / legacy area-paired audio-input selector is used.
 
     Optional per-zone normal-volume entities use the same area matching. Exactly
     one numeric entity in a soundbar's area overrides the global maximum/normal
@@ -159,12 +158,45 @@ blueprint:
               multiple: true
               filter:
                 - domain: media_player
-        source_fallback:
-          name: Fallback source when no mapped media player is playing
+        source_assistants:
+          name: Assistants → soundbar input
           description: >-
-            Default ULTIMEA source used when no mapped media player is playing.
-            This is a single source choice and does not use Home Assistant areas.
-            No change leaves the current source untouched.
+            Assist Satellite entities that should temporarily take source-routing
+            priority while active. Any selected assistant whose state is not idle,
+            unknown, or unavailable switches its target soundbar to Assistant
+            input below. With one selected ULTIMEA soundbar, no Home Assistant area
+            is required. With multiple bars, the assistant and target bar must
+            share an area.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: assist_satellite
+        assistant_source:
+          name: Assistant input
+          description: >-
+            ULTIMEA input used while a selected assistant is active. No change
+            disables assistant source switching. When all selected assistants
+            return to idle, normal media-player/fallback source routing resumes.
+          default: No change
+          selector:
+            select:
+              options:
+                - No change
+                - eARC
+                - HDMI
+                - Optical
+                - AUX
+                - Bluetooth
+                - USB
+        source_fallback:
+          name: Fallback source when no mapped assistant or media player is active
+          description: >-
+            Default ULTIMEA source used when no mapped assistant is active and no
+            mapped media player is playing. This is a single source choice and
+            does not use Home Assistant areas. No change leaves the current source
+            untouched.
           default: No change
           selector:
             select:
@@ -640,6 +672,8 @@ variables:
   source_players_aux: !input source_players_aux
   source_players_bluetooth: !input source_players_bluetooth
   source_players_usb: !input source_players_usb
+  source_assistants: !input source_assistants
+  assistant_source: !input assistant_source
   source_fallback: !input source_fallback
   sound_mode_earc: !input sound_mode_earc
   sound_mode_hdmi: !input sound_mode_hdmi
@@ -748,6 +782,9 @@ triggers:
   - trigger: state
     entity_id: !input source_players_usb
     id: source_media_usb
+  - trigger: state
+    entity_id: !input source_assistants
+    id: source_assistant_change
   - trigger: state
     entity_id: !input low_volume_binary_entities
     id: low_binary_change
@@ -1760,12 +1797,14 @@ actions:
                                 then:
                                   - delay: "00:00:05"
 
-  # Optional media-player source routing. With one selected ULTIMEA soundbar,
-  # mapped media players control it directly and do not require an HA area.
+  # Optional assistant/media-player source routing. Active mapped assistants have
+  # priority over media players. With one selected ULTIMEA soundbar, mapped
+  # assistants/media players control it directly and do not require an HA area.
   # With multiple selected soundbars, area matching disambiguates which bar a
-  # mapped player controls. If several mapped players affect one bar, the player
-  # with the newest last_changed timestamp
-  # wins. When no mapped player is playing, the single configured fallback source
+  # mapped entity controls. When no assistant is active, if several mapped media
+  # players affect one bar, the player with the newest last_changed timestamp
+  # wins. When no assistant is active and no mapped media player is playing, the
+  # single configured fallback source
   # is used. No change leaves the source untouched (legacy area selector remains a
   # backward-compatible fallback only when this new fallback is No change).
   - choose:
@@ -1779,11 +1818,14 @@ actions:
                    or (source_players_optical | length > 0)
                    or (source_players_aux | length > 0)
                    or (source_players_bluetooth | length > 0)
-                   or (source_players_usb | length > 0))
+                   or (source_players_usb | length > 0)
+                   or (assistant_source != 'No change'
+                       and source_assistants | length > 0))
                  and (trigger_id in ['startup', 'audio_input_change',
                                      'source_media_earc', 'source_media_hdmi',
                                      'source_media_optical', 'source_media_aux',
-                                     'source_media_bluetooth', 'source_media_usb']
+                                     'source_media_bluetooth', 'source_media_usb',
+                                     'source_assistant_change']
                       or bar_became_on) }}
         sequence:
           - repeat:
@@ -1802,7 +1844,8 @@ actions:
                         {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
                       {% elif trigger_id in ['source_media_earc', 'source_media_hdmi',
                                              'source_media_optical', 'source_media_aux',
-                                             'source_media_bluetooth', 'source_media_usb'] %}
+                                             'source_media_bluetooth', 'source_media_usb',
+                                             'source_assistant_change'] %}
                         {% if ultimea_players is string or ultimea_players | length == 1 %}
                           true
                         {% else %}
@@ -1848,6 +1891,25 @@ actions:
                         {{ '' }}
                       {% else %}
                         {{ raw }}
+                      {% endif %}
+                    assistant_source_active: >-
+                      {% if assistant_source == 'No change' %}
+                        false
+                      {% else %}
+                        {% set ns = namespace(active=false) %}
+                        {% set assistants = [source_assistants]
+                             if source_assistants is string else source_assistants %}
+                        {% for entity in assistants %}
+                          {% set obj = expand(entity) | first %}
+                          {% if obj is not none
+                                and obj.state not in ['idle', 'unknown', 'unavailable']
+                                and ((ultimea_players is string or ultimea_players | length == 1)
+                                     or (bar_area != ''
+                                         and (area_id(entity) or '') == bar_area)) %}
+                            {% set ns.active = true %}
+                          {% endif %}
+                        {% endfor %}
+                        {{ ns.active }}
                       {% endif %}
                     latest_playing_source: >-
                       {% set ns = namespace(source='', changed=0) %}
@@ -1931,7 +1993,9 @@ actions:
                       {% endfor %}
                       {{ ns.source }}
                     requested_source: >-
-                      {% if latest_playing_source %}
+                      {% if assistant_source_active %}
+                        {{ assistant_source }}
+                      {% elif latest_playing_source %}
                         {{ latest_playing_source }}
                       {% elif source_fallback != 'No change' %}
                         {{ source_fallback }}

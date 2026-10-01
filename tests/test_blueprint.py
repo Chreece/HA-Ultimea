@@ -78,6 +78,8 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "source_players_aux",
         "source_players_bluetooth",
         "source_players_usb",
+        "source_assistants",
+        "assistant_source",
         "source_fallback",
         "sound_mode_earc",
         "sound_mode_hdmi",
@@ -154,6 +156,21 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "USB",
     ]
 
+    assistant_selector = inputs["source_assistants"]["selector"]["entity"]
+    assert assistant_selector["multiple"] is True
+    assert assistant_selector["filter"][0]["domain"] == "assist_satellite"
+    assert inputs["source_assistants"]["default"] == []
+    assert inputs["assistant_source"]["default"] == "No change"
+    assert inputs["assistant_source"]["selector"]["select"]["options"] == [
+        "No change",
+        "eARC",
+        "HDMI",
+        "Optical",
+        "AUX",
+        "Bluetooth",
+        "USB",
+    ]
+
     expected_input_modes = [
         "Automatic / no input default",
         "Movie",
@@ -221,6 +238,11 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     ):
         assert trigger_id in text
     assert "latest_playing_source" in text
+    assert "assistant_source_active" in text
+    assert "source_assistant_change" in text
+    assert "obj.state not in ['idle', 'unknown', 'unavailable']" in text
+    assert "{% if assistant_source_active %}" in text
+    assert "{{ assistant_source }}" in text
     assert "as_timestamp(obj.last_changed, 0)" in text
     assert "ultimea_players is string or ultimea_players | length == 1" in text
     assert "source_fallback" in text
@@ -347,6 +369,7 @@ def test_blueprint_has_no_periodic_automation_triggers() -> None:
         "source_media_aux": "source_players_aux",
         "source_media_bluetooth": "source_players_bluetooth",
         "source_media_usb": "source_players_usb",
+        "source_assistant_change": "source_assistants",
     }
     for trigger_id, input_name in expected_source_triggers.items():
         source_trigger = next(item for item in triggers if item.get("id") == trigger_id)
