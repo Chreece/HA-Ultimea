@@ -153,7 +153,7 @@ The repository includes [`ULTIMEA Adaptive Room Audio`](blueprints/automation/ul
 - apply quiet hours (ώρες κοινής ησυχίας), including event-driven before/after boundary fades and guarded five-second-step handoff/restores without permanent polling triggers;
 - lower volume immediately for selected binary conditions, room-list state/attribute sources, TTS playback, active Assist satellites, or a night-mode boolean;
 - select **Night** during quiet conditions;
-- follow connected-player content into **Movie, Music, Voice, Sport, or Game**, with editable keyword matching and an optional provider-neutral AI/snapshot classification hook;
+- follow connected-player content into **Movie, Music, Voice, Sport, or Game** only when each player is mapped to the soundbar's currently active input; classifier/AI results use the same current-input gate;
 - respect manual ULTIMEA volume and sound-mode changes instead of continuously fighting them, including directional holds during quiet-hour fades and learning a new minimum/maximum when the user's change opposes the fade direction.
 
 The blueprint is bundled with the integration and is automatically installed when

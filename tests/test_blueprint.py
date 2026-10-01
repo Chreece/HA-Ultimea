@@ -273,6 +273,14 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "sound_mode: \"{{ source_requested_sound_mode }}\"" in text
     assert "sound_mode: \"{{ routed_requested_sound_mode }}\"" in text
     assert "This automation already knows which input it requested" in text
+    assert "current_source_key" in text
+    assert "current_input_players" in text
+    assert "eq_connected_players" in text
+    assert "eq_input_has_connected_player" in text
+    assert "trigger_entity in eq_connected_players" in text
+    assert "and eq_input_has_connected_player" in text
+    assert "{% for entity in eq_connected_players %}" in text
+    assert "trigger_entity in mapped" in text
     assert "manual_scheduled_volume" in text
     assert "manual_settled_volume" in text
     assert "manual_volume_stable_after_delay" in text

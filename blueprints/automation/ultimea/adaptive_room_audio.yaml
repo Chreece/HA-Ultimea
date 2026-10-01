@@ -505,9 +505,11 @@ blueprint:
           name: Devices connected to the soundbar
           description: >-
             Select TVs, streamers, consoles or other media_player entities whose
-            current app/content should drive the ULTIMEA sound mode. Area
-            assignment is used to pair them to each soundbar; entities without an
-            area are treated as global.
+            current app/content may drive the ULTIMEA sound mode. A selected player
+            is eligible only while the soundbar is on the same input that player is
+            assigned to above under Media players → eARC/HDMI/Optical/AUX/
+            Bluetooth/USB. With multiple soundbars, Home Assistant area matching
+            also disambiguates which bar the player belongs to.
           default: []
           selector:
             entity:
@@ -518,8 +520,10 @@ blueprint:
           name: Optional content / AI classifier entities
           description: >-
             Optional entities whose state or common label attributes contain a
-            content class such as Movie, Music, Voice, Sport or Game. Area
-            assignment is respected; entities without an area are global.
+            content class such as Movie, Music, Voice, Sport or Game. Classifier
+            results participate only when the current soundbar input has at least
+            one eligible Connected content media player. Area assignment is still
+            respected for multiple soundbars.
           default: []
           selector:
             entity:
@@ -527,10 +531,11 @@ blueprint:
         ai_content_actions:
           name: Optional snapshot / AI classification actions
           description: >-
-            Optional actions run when a connected media player changes. Use this
-            hook to take a snapshot and call any AI/vision integration, then write
-            the result to one of the classifier entities above. Leave empty when
-            media metadata is enough.
+            Optional actions run when an eligible Connected content media player
+            changes while its mapped input is currently active. Use this hook to
+            take a snapshot and call any AI/vision integration, then write the
+            result to one of the classifier entities above. Leave empty when media
+            metadata is enough.
           default: []
           selector:
             action: {}
@@ -619,7 +624,9 @@ blueprint:
             boolean: {}
         apply_eq_follow:
           name: EQ follow
-          description: Select Movie/Music/Voice/Sport/Game from connected content metadata/classification.
+          description: >-
+            Select Movie/Music/Voice/Sport/Game only from Connected content players
+            mapped to the soundbar's currently active input.
           default: false
           selector:
             boolean: {}
@@ -2020,12 +2027,57 @@ actions:
                               data:
                                 sound_mode: "{{ routed_requested_sound_mode }}"
 
-  # Optional provider-agnostic content/AI hook. It is intentionally not tied to
-  # a specific camera, LLM, vision provider or service contract.
+  # Optional provider-agnostic content/AI hook. Run it only when the changed
+  # connected media player belongs to the soundbar's CURRENT input mapping.
   - choose:
       - conditions:
           - condition: template
-            value_template: "{{ apply_eq_follow and trigger_id == 'connected_change' }}"
+            value_template: >-
+              {% if not apply_eq_follow or trigger_id != 'connected_change' %}
+                false
+              {% else %}
+                {% set ns = namespace(match=false) %}
+                {% set connected = [connected_media_players]
+                     if connected_media_players is string else connected_media_players %}
+                {% set bars = [ultimea_players]
+                     if ultimea_players is string else ultimea_players %}
+                {% if trigger_entity in connected %}
+                  {% for bar in bars %}
+                    {% set bar_area = area_id(bar) or '' %}
+                    {% set key = (state_attr(bar, 'source') or '') | lower
+                         | replace(' ', '') | replace('-', '') | replace('_', '') %}
+                    {% if key in ['earc', 'arc', 'audioreturnchannel',
+                                  'enhancedreturnchannel'] %}
+                      {% set mapped = [source_players_earc]
+                           if source_players_earc is string else source_players_earc %}
+                    {% elif key in ['hdmi', 'hdmiin'] %}
+                      {% set mapped = [source_players_hdmi]
+                           if source_players_hdmi is string else source_players_hdmi %}
+                    {% elif key in ['optical', 'opt', 'spdif', 'toslink'] %}
+                      {% set mapped = [source_players_optical]
+                           if source_players_optical is string else source_players_optical %}
+                    {% elif key in ['aux', 'auxin', 'linein'] %}
+                      {% set mapped = [source_players_aux]
+                           if source_players_aux is string else source_players_aux %}
+                    {% elif key in ['bluetooth', 'bt'] %}
+                      {% set mapped = [source_players_bluetooth]
+                           if source_players_bluetooth is string else source_players_bluetooth %}
+                    {% elif key in ['usb', 'usbin'] %}
+                      {% set mapped = [source_players_usb]
+                           if source_players_usb is string else source_players_usb %}
+                    {% else %}
+                      {% set mapped = [] %}
+                    {% endif %}
+                    {% if trigger_entity in mapped
+                          and ((ultimea_players is string or ultimea_players | length == 1)
+                               or (bar_area != ''
+                                   and (area_id(trigger_entity) or '') == bar_area)) %}
+                      {% set ns.match = true %}
+                    {% endif %}
+                  {% endfor %}
+                {% endif %}
+                {{ ns.match }}
+              {% endif %}
         sequence: !input ai_content_actions
 
   # Night/EQ policy is event-driven, not continuously enforced. This is
@@ -2046,6 +2098,54 @@ actions:
                 - variables:
                     bar: "{{ repeat.item }}"
                     bar_area: "{{ area_id(repeat.item) or '' }}"
+                    current_source_name: "{{ state_attr(repeat.item, 'source') or '' }}"
+                - variables:
+                    current_source_key: >-
+                      {{ current_source_name | lower
+                         | replace(' ', '')
+                         | replace('-', '')
+                         | replace('_', '') }}
+                - variables:
+                    current_input_players: >-
+                      {% if current_source_key in ['earc', 'arc',
+                                                   'audioreturnchannel',
+                                                   'enhancedreturnchannel'] %}
+                        {{ [source_players_earc]
+                           if source_players_earc is string else source_players_earc }}
+                      {% elif current_source_key in ['hdmi', 'hdmiin'] %}
+                        {{ [source_players_hdmi]
+                           if source_players_hdmi is string else source_players_hdmi }}
+                      {% elif current_source_key in ['optical', 'opt', 'spdif', 'toslink'] %}
+                        {{ [source_players_optical]
+                           if source_players_optical is string else source_players_optical }}
+                      {% elif current_source_key in ['aux', 'auxin', 'linein'] %}
+                        {{ [source_players_aux]
+                           if source_players_aux is string else source_players_aux }}
+                      {% elif current_source_key in ['bluetooth', 'bt'] %}
+                        {{ [source_players_bluetooth]
+                           if source_players_bluetooth is string else source_players_bluetooth }}
+                      {% elif current_source_key in ['usb', 'usbin'] %}
+                        {{ [source_players_usb]
+                           if source_players_usb is string else source_players_usb }}
+                      {% else %}
+                        {{ [] }}
+                      {% endif %}
+                - variables:
+                    eq_connected_players: >-
+                      {% set ns = namespace(players=[]) %}
+                      {% set connected = [connected_media_players]
+                           if connected_media_players is string else connected_media_players %}
+                      {% for entity in connected %}
+                        {% if entity in current_input_players
+                              and ((ultimea_players is string or ultimea_players | length == 1)
+                                   or (bar_area != ''
+                                       and (area_id(entity) or '') == bar_area)) %}
+                          {% set ns.players = ns.players + [entity] %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.players }}
+                    eq_input_has_connected_player: >-
+                      {{ eq_connected_players | length > 0 }}
                     mode_trigger_affects_bar: >-
                       {% if trigger_id in ['startup', 'quiet_start', 'quiet_end'] %}
                         true
@@ -2053,9 +2153,17 @@ actions:
                         {{ trigger_entity == bar and bar_became_on }}
                       {% elif trigger_id == 'bar_source_change' %}
                         {{ trigger_entity == bar }}
-                      {% elif trigger_id in ['night_override_change', 'connected_change', 'classifier_change'] %}
+                      {% elif trigger_id == 'night_override_change' %}
                         {% set trigger_area = area_id(trigger_entity) or '' %}
-                        {{ trigger_area == '' or (bar_area != '' and trigger_area == bar_area) }}
+                        {{ trigger_area == ''
+                           or (bar_area != '' and trigger_area == bar_area) }}
+                      {% elif trigger_id == 'connected_change' %}
+                        {{ trigger_entity in eq_connected_players }}
+                      {% elif trigger_id == 'classifier_change' %}
+                        {% set trigger_area = area_id(trigger_entity) or '' %}
+                        {{ eq_input_has_connected_player
+                           and (trigger_area == ''
+                                or (bar_area != '' and trigger_area == bar_area)) }}
                       {% else %}
                         false
                       {% endif %}
@@ -2073,33 +2181,33 @@ actions:
                     supported_sound_modes: "{{ state_attr(bar, 'sound_mode_list') | default([], true) }}"
                     content_text: >-
                       {% set ns = namespace(text='') %}
-                      {% for entity in connected_media_players %}
-                        {% set entity_area = area_id(entity) or '' %}
-                        {% if entity_area == '' or (bar_area != '' and entity_area == bar_area) %}
-                          {% set ns.text = ns.text ~ ' ' ~ states(entity) %}
-                          {% for attr in ['app_name', 'media_title', 'media_series_title',
-                                          'media_album_name', 'media_artist',
-                                          'media_content_type', 'media_channel',
-                                          'media_playlist', 'source'] %}
-                            {% set value = state_attr(entity, attr) %}
-                            {% if value is not none %}
-                              {% set ns.text = ns.text ~ ' ' ~ (value | string) %}
-                            {% endif %}
-                          {% endfor %}
-                        {% endif %}
+                      {% for entity in eq_connected_players %}
+                        {% set ns.text = ns.text ~ ' ' ~ states(entity) %}
+                        {% for attr in ['app_name', 'media_title', 'media_series_title',
+                                        'media_album_name', 'media_artist',
+                                        'media_content_type', 'media_channel',
+                                        'media_playlist', 'source'] %}
+                          {% set value = state_attr(entity, attr) %}
+                          {% if value is not none %}
+                            {% set ns.text = ns.text ~ ' ' ~ (value | string) %}
+                          {% endif %}
+                        {% endfor %}
                       {% endfor %}
-                      {% for entity in content_classifier_entities %}
-                        {% set entity_area = area_id(entity) or '' %}
-                        {% if entity_area == '' or (bar_area != '' and entity_area == bar_area) %}
-                          {% set ns.text = ns.text ~ ' ' ~ states(entity) %}
-                          {% for attr in ['classification', 'content_type', 'label', 'result'] %}
-                            {% set value = state_attr(entity, attr) %}
-                            {% if value is not none %}
-                              {% set ns.text = ns.text ~ ' ' ~ (value | string) %}
-                            {% endif %}
-                          {% endfor %}
-                        {% endif %}
-                      {% endfor %}
+                      {% if eq_input_has_connected_player %}
+                        {% for entity in content_classifier_entities %}
+                          {% set entity_area = area_id(entity) or '' %}
+                          {% if entity_area == ''
+                                or (bar_area != '' and entity_area == bar_area) %}
+                            {% set ns.text = ns.text ~ ' ' ~ states(entity) %}
+                            {% for attr in ['classification', 'content_type', 'label', 'result'] %}
+                              {% set value = state_attr(entity, attr) %}
+                              {% if value is not none %}
+                                {% set ns.text = ns.text ~ ' ' ~ (value | string) %}
+                              {% endif %}
+                            {% endfor %}
+                          {% endif %}
+                        {% endfor %}
+                      {% endif %}
                       {{ ns.text | lower }}
                 - variables:
                     night_requested: "{{ in_quiet_hours or night_override_active }}"
@@ -2150,6 +2258,7 @@ actions:
                                   value_template: >-
                                     {{ not (apply_night_mode and night_requested)
                                        and apply_eq_follow
+                                       and eq_input_has_connected_player
                                        and eq_candidate != 'No change'
                                        and eq_candidate in supported_sound_modes
                                        and current_sound_mode != eq_candidate }}

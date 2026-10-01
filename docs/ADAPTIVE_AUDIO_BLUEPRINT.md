@@ -284,9 +284,22 @@ When Night ends:
 
 ## EQ/content follow
 
-Select the media players physically/logically connected to the soundbar, such as a
-TV, Android TV box, game console bridge, Kodi/Plex/Jellyfin player, or Music
-Assistant player. The blueprint combines their state with common metadata:
+EQ/content follow is **input-aware**. A media player selected under **Devices
+connected to the soundbar** is eligible only while the ULTIMEA bar is currently on
+the same input that player is assigned to under **Media players → eARC / HDMI /
+Optical / AUX / Bluetooth / USB**.
+
+For example, if `media_player.tv` is selected under Connected content and under
+**Media players → eARC**, its TV-program metadata may drive Movie/Music/Voice/etc.
+only while the bar is actually on eARC/ARC. If the bar switches to AUX, that TV is
+ignored until eARC/ARC becomes active again. To drive EQ on AUX, a Connected
+content media player must also be assigned under **Media players → AUX**.
+
+With one selected ULTIMEA bar, the input mapping is sufficient. With multiple bars,
+the existing Home Assistant area match is also required to determine which bar the
+media player belongs to.
+
+The blueprint combines eligible players' state with common metadata:
 
 - `app_name`
 - `media_title`
@@ -302,9 +315,14 @@ The text is compared with editable keyword lists for **Game, Sport, Voice, Music
 and Movie** (in that priority order). Only modes reported in the ULTIMEA entity's
 `sound_mode_list` are sent.
 
+Classifier entities and the optional AI/snapshot hook are subject to the same
+current-input gate: they participate only when the current input has at least one
+eligible Connected content media player. A classifier therefore cannot change the
+bar's EQ while all of its associated players belong to another input.
+
 Like Night mode, EQ follow is event-driven. A manual sound-mode change is not
-periodically overwritten; a new connected-content/classifier event is needed
-before automatic EQ selection happens again.
+periodically overwritten; a new **eligible current-input** connected-content or
+classifier event is needed before automatic EQ selection happens again.
 
 ## Optional AI / snapshot classification
 
