@@ -87,6 +87,41 @@ media_player.music_player  → Bluetooth
 
 With the TV and console both playing, whichever entered `playing` most recently
 controls the source. When it stops, the other active player takes over.
+
+### Per-input sound mode
+
+Each physical ULTIMEA input has an optional sound-mode mapping:
+
+- **Sound mode → eARC / ARC**
+- **Sound mode → HDMI**
+- **Sound mode → Optical**
+- **Sound mode → AUX**
+- **Sound mode → Bluetooth**
+- **Sound mode → USB**
+
+Each mapping can be **Automatic / no input default, Movie, Music, Voice, Sport,
+Night, or Game** and defaults to **Automatic / no input default**.
+
+A configured value is only the **starting/default mode for that input**. When the
+soundbar's actual source changes—whether from the blueprint, Home Assistant, the
+physical remote, or the ULTIMEA app—the mapping for that input is applied once
+after the source has settled. For example, **AUX → Music** selects Music when the
+bar enters AUX. If the user, EQ/content classification, Night policy, or another
+automation later changes Music to another mode, that new mode is accepted and the
+AUX default is not re-applied until the bar leaves AUX and later comes back.
+
+**Automatic / no input default** means the source change itself does not seed a
+mode. The normal Night/EQ/content policy may therefore choose a mode immediately
+from the other configured rules.
+
+Only sound modes reported by that soundbar in `sound_mode_list` are sent, so a
+mapping unsupported by another ULTIMEA model is safely ignored. ARC and eARC use
+the same mapping.
+
+Quiet/night policy has priority: if Night mode is enabled and quiet hours or a
+configured night-mode entity are active, a source change requests **Night**
+instead of the per-input default.
+
 ## Minimum and maximum volume
 
 ### Optional per-zone normal volume
