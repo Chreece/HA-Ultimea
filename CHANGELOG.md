@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.01.4
+
+### Added
+
+- Added dedicated Assist Satellite source routing, separate from the existing voice-assistant volume-ducking selection.
+- Added **Assistants → soundbar input** and a configurable **Assistant input** supporting No change, eARC, HDMI, Optical, AUX, Bluetooth, or USB.
+- Active mapped assistants take source-routing priority while their state is not idle, unknown, or unavailable.
+- When all mapped assistants return to idle, normal playing-media-player and fallback source routing resumes automatically.
+
+### Changed
+
+- With one selected ULTIMEA soundbar, mapped assistants do not require Home Assistant area assignment; multiple-bar setups continue to use areas for disambiguation.
+- Assistant-triggered source changes reuse the existing ARC/eARC adaptation and per-input default sound-mode handling.
+
 ## 2026.10.01.3
 
 ### Fixed
