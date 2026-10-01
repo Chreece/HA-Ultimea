@@ -155,7 +155,7 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     ]
 
     expected_input_modes = [
-        "No change",
+        "Automatic / no input default",
         "Movie",
         "Music",
         "Voice",
@@ -171,7 +171,7 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "sound_mode_bluetooth",
         "sound_mode_usb",
     ):
-        assert inputs[key]["default"] == "No change"
+        assert inputs[key]["default"] == "Automatic / no input default"
         assert inputs[key]["selector"]["select"]["options"] == expected_input_modes
 
     assert inputs["handoff_transition"]["default"]["seconds"] == 15
@@ -260,6 +260,10 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "ULTIMEA source change handled." in text
     assert "source_input_sound_mode" in text
     assert "source_requested_sound_mode" in text
+    assert "Automatic / no input default" in text
+    assert "source_input_sound_mode != 'Automatic / no input default'" in text
+    assert "ULTIMEA source default sound mode handled." in text
+    assert "'bar_source_change'" in text
     assert "source_night_override_active" in text
     assert "source_supported_sound_modes" in text
     assert "source_requested_sound_mode in source_supported_sound_modes" in text
