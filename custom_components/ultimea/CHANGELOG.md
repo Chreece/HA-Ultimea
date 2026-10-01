@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.01.1
+
+### Fixed
+
+- Fixed automation-driven source changes so the selected input's default sound mode is applied in the same source-routing run instead of depending on a second `bar_source_change` event.
+- Remote/app/manual source changes now seed the per-input default immediately on the source event; the 750 ms source-change delay is reserved only for hardware source-specific volume recall/clamping.
+- Preserved one-shot default semantics: later manual, EQ/content, Night or external automation sound-mode changes are accepted while the bar remains on the same input.
+
 ## 2026.10.01
 
 ### Added
