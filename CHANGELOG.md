@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.01
+
+### Added
+
+- Added one optional default sound-mode mapping per ULTIMEA input: eARC/ARC, HDMI, Optical, AUX, Bluetooth and USB.
+- Each input default can be **Automatic / no input default**, Movie, Music, Voice, Sport, Night or Game.
+
+### Changed
+
+- Per-input sound modes are one-shot defaults rather than enforced modes. A configured default is applied only when the bar actually enters that input; later manual, EQ/content, Night or external automation changes are accepted while the bar remains on that input.
+- **Automatic / no input default** leaves the source change itself mode-neutral so the existing Night/EQ/content rules can choose the sound mode immediately.
+- Night policy retains priority over per-input defaults while quiet-hours or configured night-mode conditions are active.
+- Unsupported per-input defaults are ignored when they are not present in the target bar's reported `sound_mode_list`.
+
 ## 2026.09.30.1
 
 ### Changed
