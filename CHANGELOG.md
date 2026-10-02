@@ -4,6 +4,20 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.02.3
+
+### Added
+
+- Added optional per-input **Pause/resume controllers** for eARC, HDMI, Optical, AUX, Bluetooth, and USB.
+- These upstream media players are used only to pause/resume playback during a source handoff and never trigger a ULTIMEA source change by themselves.
+- This supports split-output setups such as a room-specific Snapcast client triggering AUX while MPD remains the actual playback controller.
+
+### Changed
+
+- When pause/resume controllers are configured for the target input, the mapped route/output entity is never used as the pause target.
+- If no controller is configured, the blueprint retains backward-compatible behavior and tries to pause the winning mapped media player itself.
+- Every selected active controller must confirm `paused` before the soundbar source can change, and only controllers that remain paused are resumed after source confirmation/settle.
+
 ## 2026.10.02.2
 
 ### Fixed
