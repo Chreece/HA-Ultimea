@@ -202,6 +202,7 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
         "media_player.volume_set",
         "media_player.select_sound_mode",
         "media_player.select_source",
+        "media_player.turn_on",
     ):
         assert action in text
 
@@ -239,6 +240,13 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
         assert trigger_id in text
     assert "latest_playing_source" in text
     assert "assistant_source_active" in text
+    assert "bar_became_available" in text
+    assert "trigger.from_state.state in ['unknown', 'unavailable']" in text
+    assert "trigger.to_state.state not in ['unknown', 'unavailable']" in text
+    assert "routing_activity_active" in text
+    assert "wake_for_active_route" in text
+    assert "and is_state(bar, 'off')" in text
+    assert "not wake_for_active_route" in text
     assert "source_assistant_change" in text
     assert "obj.state not in ['idle', 'unknown', 'unavailable']" in text
     assert "{% if assistant_source_active %}" in text
