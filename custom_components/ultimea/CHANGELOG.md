@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.02
+
+### Changed
+
+- Active mapped source routes can now wake an `off` ULTIMEA soundbar. A mapped media player in `playing` state or an active mapped Assist Satellite may call `media_player.turn_on`.
+- Source routing now reacts when a soundbar returns from `unavailable` or `unknown` to a known state. If a real mapped route is already active and the bar comes back as `off`, the blueprint turns it on and lets the subsequent `off → on` event perform a fresh source/default-mode routing pass.
+- Fallback sources and legacy audio-input selectors never wake the soundbar by themselves; wake-up is reserved for an actual active mapped source.
+
 ## 2026.10.01.4
 
 ### Added
