@@ -57,8 +57,9 @@ Assistant source routing is independent from the existing **Voice assistants**
 selection used for volume ducking. You can select the same Assist Satellite in
 both places when you want both behaviors.
 
-Media-player routing remains intentionally simple: assign media players to the
-ULTIMEA input they use. The blueprint exposes six entity groups:
+Media-player routing remains intentionally simple: assign the **room/output media
+players that identify which input is needed** to the ULTIMEA input they use. The
+blueprint exposes six entity groups:
 
 - **Media players → eARC**
 - **Media players → HDMI**
@@ -86,20 +87,43 @@ switches its target soundbar to that player's mapped source. If more than one
 mapped media player affecting the same bar is playing, the player that most
 recently entered the `playing` state wins.
 
-When the winning media player requires a **real input change**, the blueprint
-protects the beginning of playback with a guarded handoff:
+When the winning route requires a **real input change**, the blueprint can protect
+the beginning of playback with separate upstream playback controllers.
 
-1. send pause to that winning media player;
-2. wait up to two seconds for Home Assistant to **confirm the player is actually
-   `paused`**; if pause is rejected/ignored, abort before changing the soundbar;
-3. after confirmation, allow a 150 ms guard;
+For each input there is an optional **Pause/resume controllers → INPUT** selector.
+These entities **never trigger source changes**. They are used only to pause/resume
+the actual playback producer while the room/output entity continues to decide
+which ULTIMEA input is needed.
+
+This is specifically useful for Snapcast. Example:
+
+```text
+Media players → AUX:            media_player.wohnzimmer_tts   (Snapclient/output)
+Pause/resume controllers → AUX: media_player.mpd              (actual producer)
+```
+
+Here `media_player.mpd` does not switch the living-room bar to AUX merely because
+MPD is playing elsewhere. AUX is requested only when `wohnzimmer_tts` is playing.
+If AUX must change, MPD is paused for the handoff and resumed afterward.
+
+When explicit handoff controllers are configured for the target input, the mapped
+route trigger is **never** used as the pause target. If no handoff controller is
+configured, the blueprint retains backward compatibility and tries to pause the
+winning mapped media player itself.
+
+The guarded handoff is:
+
+1. pause the active configured controller(s), or the winning route player only
+   when no controller is configured;
+2. wait up to two seconds for every pause target to confirm `paused`; otherwise
+   abort before changing the soundbar;
+3. allow a 150 ms guard;
 4. request the new ULTIMEA source;
 5. wait up to three seconds for the bar's live `source` attribute to confirm the
-   requested input; if it never confirms, stop and leave the media player paused
-   rather than lose its content;
+   requested input; if it never confirms, stop and leave the controller paused;
 6. allow another 500 ms for the confirmed input to settle;
 7. apply that input's one-shot default sound mode when appropriate;
-8. resume the same media player, but only if it is still `paused`.
+8. resume exactly the controller(s) that were paused and are still `paused`.
 
 No pause is inserted when the bar is already on the player's mapped input.
 

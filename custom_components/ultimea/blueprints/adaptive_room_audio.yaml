@@ -158,6 +158,80 @@ blueprint:
               multiple: true
               filter:
                 - domain: media_player
+        handoff_players_earc:
+          name: Pause/resume controllers → eARC
+          description: >-
+            Optional upstream media_player entities that actually control playback
+            for the eARC route. They are paused/resumed only during a source
+            handoff and NEVER trigger eARC by themselves. Use this when the mapped
+            output entity (for example a Snapcast client) cannot pause its source.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        handoff_players_hdmi:
+          name: Pause/resume controllers → HDMI
+          description: >-
+            Optional upstream media_player entities that actually control playback
+            for the HDMI route. They are used only for pause/resume protection and
+            never trigger HDMI by themselves.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        handoff_players_optical:
+          name: Pause/resume controllers → Optical
+          description: >-
+            Optional upstream media_player entities that actually control playback
+            for the Optical route. They are used only for pause/resume protection
+            and never trigger Optical by themselves.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        handoff_players_aux:
+          name: Pause/resume controllers → AUX
+          description: >-
+            Optional upstream media_player entities that actually control playback
+            for the AUX route. Example: if a room Snapcast client is the AUX route
+            trigger but MPD owns playback, put the Snapcast client under Media
+            players → AUX and put MPD here. MPD will not trigger AUX by itself.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        handoff_players_bluetooth:
+          name: Pause/resume controllers → Bluetooth
+          description: >-
+            Optional upstream media_player entities that actually control playback
+            for the Bluetooth route. They are used only for pause/resume protection
+            and never trigger Bluetooth by themselves.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
+        handoff_players_usb:
+          name: Pause/resume controllers → USB
+          description: >-
+            Optional upstream media_player entities that actually control playback
+            for the USB route. They are used only for pause/resume protection and
+            never trigger USB by themselves.
+          default: []
+          selector:
+            entity:
+              multiple: true
+              filter:
+                - domain: media_player
         source_assistants:
           name: Assistants → soundbar input
           description: >-
@@ -672,6 +746,12 @@ variables:
   source_players_aux: !input source_players_aux
   source_players_bluetooth: !input source_players_bluetooth
   source_players_usb: !input source_players_usb
+  handoff_players_earc: !input handoff_players_earc
+  handoff_players_hdmi: !input handoff_players_hdmi
+  handoff_players_optical: !input handoff_players_optical
+  handoff_players_aux: !input handoff_players_aux
+  handoff_players_bluetooth: !input handoff_players_bluetooth
+  handoff_players_usb: !input handoff_players_usb
   source_assistants: !input source_assistants
   assistant_source: !input assistant_source
   source_fallback: !input source_fallback
@@ -1805,9 +1885,10 @@ actions:
 
   # Optional assistant/media-player source routing. Active mapped assistants have
   # priority over media players. When a playing media player must move the bar to
-  # another input, require a confirmed paused state before touching the source,
-  # wait for the live source to confirm/settle, then resume it so the start of
-  # playback is not lost. A real active
+  # another input, pause the optional upstream handoff controller(s) for that
+  # input (falling back to the mapped player only when no controller is configured),
+  # require confirmed paused state before touching the source, then resume the
+  # same controller(s) after the live source confirms/settles. A real active
   # route (assistant active or mapped media player playing) may wake an off
   # soundbar; fallback/legacy selectors do
   # not wake it. With one selected ULTIMEA soundbar, mapped assistants/media
@@ -2077,6 +2158,56 @@ actions:
                       {% else %}
                         {{ requested_source }}
                       {% endif %}
+                    configured_handoff_players: >-
+                      {% set key = effective_requested_source | lower
+                           | replace(' ', '') | replace('-', '') | replace('_', '') %}
+                      {% if key in ['earc', 'arc'] %}
+                        {{ [handoff_players_earc] if handoff_players_earc is string
+                           else handoff_players_earc }}
+                      {% elif key in ['hdmi', 'hdmiin'] %}
+                        {{ [handoff_players_hdmi] if handoff_players_hdmi is string
+                           else handoff_players_hdmi }}
+                      {% elif key in ['optical', 'opt', 'spdif', 'toslink'] %}
+                        {{ [handoff_players_optical] if handoff_players_optical is string
+                           else handoff_players_optical }}
+                      {% elif key in ['aux', 'auxin', 'linein'] %}
+                        {{ [handoff_players_aux] if handoff_players_aux is string
+                           else handoff_players_aux }}
+                      {% elif key in ['bluetooth', 'bt'] %}
+                        {{ [handoff_players_bluetooth] if handoff_players_bluetooth is string
+                           else handoff_players_bluetooth }}
+                      {% elif key in ['usb', 'usbin'] %}
+                        {{ [handoff_players_usb] if handoff_players_usb is string
+                           else handoff_players_usb }}
+                      {% else %}
+                        {{ [] }}
+                      {% endif %}
+                - variables:
+                    eligible_handoff_players: >-
+                      {% set ns = namespace(players=[]) %}
+                      {% for entity in configured_handoff_players %}
+                        {% if (ultimea_players is string or ultimea_players | length == 1)
+                              or (bar_area != ''
+                                  and (area_id(entity) or '') == bar_area) %}
+                          {% set ns.players = ns.players + [entity] %}
+                        {% endif %}
+                      {% endfor %}
+                      {{ ns.players }}
+                    has_configured_handoff_players: >-
+                      {{ eligible_handoff_players | length > 0 }}
+                    handoff_players_to_pause: >-
+                      {% set ns = namespace(players=[]) %}
+                      {% if has_configured_handoff_players %}
+                        {% for entity in eligible_handoff_players %}
+                          {% if is_state(entity, 'playing') %}
+                            {% set ns.players = ns.players + [entity] %}
+                          {% endif %}
+                        {% endfor %}
+                      {% elif latest_playing_entity != ''
+                            and is_state(latest_playing_entity, 'playing') %}
+                        {% set ns.players = [latest_playing_entity] %}
+                      {% endif %}
+                      {{ ns.players }}
                     media_source_handoff_required: >-
                       {{ not assistant_source_active
                          and latest_playing_entity != ''
@@ -2153,25 +2284,46 @@ actions:
                             - condition: template
                               value_template: "{{ media_source_handoff_required }}"
                           then:
-                            - action: media_player.media_pause
-                              continue_on_error: true
-                              target:
-                                entity_id: "{{ latest_playing_entity }}"
-                            # Do not touch the soundbar source until Home Assistant
-                            # confirms that the winning media player is really
-                            # paused. Some media_player implementations can reject
-                            # or ignore media_pause; in that case preserving the
-                            # content is more important than forcing the route.
+                            - if:
+                                - condition: template
+                                  value_template: >-
+                                    {{ handoff_players_to_pause | length == 0 }}
+                              then:
+                                - stop: Source handoff aborted because no active pause/resume controller is available.
+                            - repeat:
+                                for_each: "{{ handoff_players_to_pause }}"
+                                sequence:
+                                  - action: media_player.media_pause
+                                    continue_on_error: true
+                                    target:
+                                      entity_id: "{{ repeat.item }}"
+                            # Do not touch the soundbar source until every selected
+                            # upstream controller confirms paused. When explicit
+                            # controllers are configured, the mapped route trigger
+                            # (for example a Snapcast client) is never used as the
+                            # pause target.
                             - wait_template: >-
-                                {{ is_state(latest_playing_entity, 'paused') }}
+                                {% set ns = namespace(all_paused=true) %}
+                                {% for entity in handoff_players_to_pause %}
+                                  {% if not is_state(entity, 'paused') %}
+                                    {% set ns.all_paused = false %}
+                                  {% endif %}
+                                {% endfor %}
+                                {{ ns.all_paused }}
                               timeout: "00:00:02"
                               continue_on_timeout: true
                             - if:
                                 - condition: template
                                   value_template: >-
-                                    {{ not is_state(latest_playing_entity, 'paused') }}
+                                    {% set ns = namespace(all_paused=true) %}
+                                    {% for entity in handoff_players_to_pause %}
+                                      {% if not is_state(entity, 'paused') %}
+                                        {% set ns.all_paused = false %}
+                                      {% endif %}
+                                    {% endfor %}
+                                    {{ not ns.all_paused }}
                               then:
-                                - stop: Source handoff aborted because the media player did not confirm paused.
+                                - stop: Source handoff aborted because the pause/resume controller did not confirm paused.
                             - delay:
                                 milliseconds: 150
                         - action: media_player.select_source
@@ -2216,14 +2368,20 @@ actions:
                                 sound_mode: "{{ routed_requested_sound_mode }}"
                         - if:
                             - condition: template
-                              value_template: >-
-                                {{ media_source_handoff_required
-                                   and is_state(latest_playing_entity, 'paused') }}
+                              value_template: "{{ media_source_handoff_required }}"
                           then:
-                            - action: media_player.media_play
-                              continue_on_error: true
-                              target:
-                                entity_id: "{{ latest_playing_entity }}"
+                            - repeat:
+                                for_each: "{{ handoff_players_to_pause }}"
+                                sequence:
+                                  - if:
+                                      - condition: template
+                                        value_template: >-
+                                          {{ is_state(repeat.item, 'paused') }}
+                                    then:
+                                      - action: media_player.media_play
+                                        continue_on_error: true
+                                        target:
+                                          entity_id: "{{ repeat.item }}"
 
   # Optional provider-agnostic content/AI hook. Run it only when the changed
   # connected media player belongs to the soundbar's CURRENT input mapping.
