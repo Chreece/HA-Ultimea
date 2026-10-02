@@ -84,8 +84,27 @@ away from the Assistant input.
 When no mapped assistant is active, a mapped media player entering `playing`
 switches its target soundbar to that player's mapped source. If more than one
 mapped media player affecting the same bar is playing, the player that most
-recently entered the `playing` state wins. If that player stops or pauses, the
-next most-recent still-playing mapped player takes over automatically.
+recently entered the `playing` state wins.
+
+When the winning media player requires a **real input change**, the blueprint
+protects the beginning of playback with a guarded handoff:
+
+1. pause that winning media player;
+2. wait 250 ms so playback has actually stopped;
+3. request the new ULTIMEA source;
+4. wait up to two seconds for the bar's live `source` attribute to confirm the
+   requested input;
+5. allow another 500 ms for the input to settle;
+6. apply that input's one-shot default sound mode when appropriate;
+7. resume the same media player, but only if it is still `paused`.
+
+No pause is inserted when the bar is already on the player's mapped input.
+
+The temporary pause/resume naturally emits media-player state events. Those events
+are debounced for three seconds: if playback has resumed, the pause-triggered
+parallel routing run is discarded. A real pause/stop that remains in place still
+recalculates routing, so the next most-recent still-playing mapped player can take
+over automatically.
 
 If no mapped assistant is active and no mapped media player is playing,
 **Fallback source when no mapped assistant or media player is active** is used.
