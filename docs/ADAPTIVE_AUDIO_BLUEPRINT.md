@@ -89,14 +89,17 @@ recently entered the `playing` state wins.
 When the winning media player requires a **real input change**, the blueprint
 protects the beginning of playback with a guarded handoff:
 
-1. pause that winning media player;
-2. wait 250 ms so playback has actually stopped;
-3. request the new ULTIMEA source;
-4. wait up to two seconds for the bar's live `source` attribute to confirm the
-   requested input;
-5. allow another 500 ms for the input to settle;
-6. apply that input's one-shot default sound mode when appropriate;
-7. resume the same media player, but only if it is still `paused`.
+1. send pause to that winning media player;
+2. wait up to two seconds for Home Assistant to **confirm the player is actually
+   `paused`**; if pause is rejected/ignored, abort before changing the soundbar;
+3. after confirmation, allow a 150 ms guard;
+4. request the new ULTIMEA source;
+5. wait up to three seconds for the bar's live `source` attribute to confirm the
+   requested input; if it never confirms, stop and leave the media player paused
+   rather than lose its content;
+6. allow another 500 ms for the confirmed input to settle;
+7. apply that input's one-shot default sound mode when appropriate;
+8. resume the same media player, but only if it is still `paused`.
 
 No pause is inserted when the bar is already on the player's mapped input.
 
