@@ -993,6 +993,12 @@ actions:
            and trigger.to_state is not none
            and trigger.from_state.state != 'on'
            and trigger.to_state.state == 'on' }}
+      bar_became_available: >-
+        {{ trigger_id == 'bar_state_change'
+           and trigger.from_state is not none
+           and trigger.to_state is not none
+           and trigger.from_state.state in ['unknown', 'unavailable']
+           and trigger.to_state.state not in ['unknown', 'unavailable'] }}
 
   # A current volume attribute change on an ULTIMEA media player is special:
   # if it is not the value this blueprint currently calculates, treat it as a
@@ -1798,8 +1804,10 @@ actions:
                                   - delay: "00:00:05"
 
   # Optional assistant/media-player source routing. Active mapped assistants have
-  # priority over media players. With one selected ULTIMEA soundbar, mapped
-  # assistants/media players control it directly and do not require an HA area.
+  # priority over media players. A real active route (assistant active or mapped
+  # media player playing) may wake an off soundbar; fallback/legacy selectors do
+  # not wake it. With one selected ULTIMEA soundbar, mapped assistants/media
+  # players control it directly and do not require an HA area.
   # With multiple selected soundbars, area matching disambiguates which bar a
   # mapped entity controls. When no assistant is active, if several mapped media
   # players affect one bar, the player with the newest last_changed timestamp
@@ -1826,7 +1834,8 @@ actions:
                                      'source_media_optical', 'source_media_aux',
                                      'source_media_bluetooth', 'source_media_usb',
                                      'source_assistant_change']
-                      or bar_became_on) }}
+                      or bar_became_on
+                      or bar_became_available) }}
         sequence:
           - repeat:
               for_each: "{{ ultimea_players }}"
@@ -1838,7 +1847,8 @@ actions:
                       {% if trigger_id == 'startup' %}
                         true
                       {% elif trigger_id == 'bar_state_change' %}
-                        {{ trigger_entity == bar and bar_became_on }}
+                        {{ trigger_entity == bar
+                           and (bar_became_on or bar_became_available) }}
                       {% elif trigger_id == 'audio_input_change' %}
                         {% set trigger_area = area_id(trigger_entity) or '' %}
                         {{ trigger_area != '' and bar_area != '' and trigger_area == bar_area }}
@@ -1992,6 +2002,8 @@ actions:
                         {% endif %}
                       {% endfor %}
                       {{ ns.source }}
+                    routing_activity_active: >-
+                      {{ assistant_source_active or latest_playing_source != '' }}
                     requested_source: >-
                       {% if assistant_source_active %}
                         {{ assistant_source }}
@@ -2002,6 +2014,10 @@ actions:
                       {% else %}
                         {{ selector_requested_source }}
                       {% endif %}
+                    wake_for_active_route: >-
+                      {{ source_trigger_affects_bar
+                         and routing_activity_active
+                         and is_state(bar, 'off') }}
                     current_source: "{{ state_attr(bar, 'source') or '' }}"
                     supported_sources: "{{ state_attr(bar, 'source_list') | default([], true) }}"
                     effective_requested_source: >-
@@ -2057,11 +2073,23 @@ actions:
                       {{ state_attr(bar, 'sound_mode_list') | default([], true) }}
                     routed_current_sound_mode: >-
                       {{ state_attr(bar, 'sound_mode') or '' }}
+                - if:
+                    - condition: template
+                      value_template: "{{ wake_for_active_route }}"
+                  then:
+                    - action: media_player.turn_on
+                      continue_on_error: true
+                      target:
+                        entity_id: "{{ bar }}"
+                # The wake request deliberately does not route in this same run.
+                # The bar's subsequent transition to on starts a fresh
+                # bar_state_change run that reads live source/capability state.
                 - choose:
                     - conditions:
                         - condition: template
                           value_template: >-
-                            {{ is_state(bar, 'on')
+                            {{ not wake_for_active_route
+                               and is_state(bar, 'on')
                                and source_trigger_affects_bar
                                and effective_requested_source != ''
                                and effective_requested_source in supported_sources

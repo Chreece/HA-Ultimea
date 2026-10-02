@@ -15,8 +15,11 @@ The blueprint has three independent feature switches:
 - **EQ follow** — selects **Movie, Music, Voice, Sport, or Game** from the content
   of media players associated with the soundbar's room.
 
-A soundbar is only written while its Home Assistant media-player entity is `on`.
-Unavailable, unknown and powered-off bars are skipped.
+Ordinary volume, source-mode, and EQ writes require the ULTIMEA media-player
+entity to be `on`. Source routing has one deliberate exception: when a mapped
+media player is already `playing` or a mapped Assist Satellite is active, the
+blueprint may call `media_player.turn_on` for an `off` soundbar so the requested
+route can be applied. Unavailable/unknown bars are never commanded directly.
 
 ## Audio-input selectors
 
@@ -92,8 +95,20 @@ This is one global source selector (`eARC`, `HDMI`, `Optical`, `AUX`,
 older area-paired audio-input selector is consulted only when this new fallback is
 set to `No change`.
 
-The rule is event-driven: it re-evaluates when a mapped media player changes state,
-when Home Assistant starts, or when the soundbar turns on.
+The rule is event-driven: it re-evaluates when a mapped media player or mapped
+assistant changes state, when Home Assistant starts, when the soundbar turns on,
+and when a soundbar returns from `unavailable`/`unknown` to a known state.
+
+If a real mapped route is active while the soundbar is `off` — a media player is
+already `playing` or an assistant is active — the blueprint turns the soundbar
+on. The subsequent `off → on` state change starts a fresh routing run, which
+reads live source/capability state before selecting the winning input and applying
+that input's one-shot default sound mode. This also covers the case where the bar
+was physically unavailable, comes back as `off`, and the source player was
+already playing.
+
+The fallback source and legacy audio-input selector **never power the soundbar
+on by themselves**; wake-up is reserved for an actual active mapped source.
 
 Example:
 
