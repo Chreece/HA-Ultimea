@@ -1805,8 +1805,9 @@ actions:
 
   # Optional assistant/media-player source routing. Active mapped assistants have
   # priority over media players. When a playing media player must move the bar to
-  # another input, pause it for the source handoff, wait for the live source to
-  # settle, then resume it so the start of playback is not lost. A real active
+  # another input, require a confirmed paused state before touching the source,
+  # wait for the live source to confirm/settle, then resume it so the start of
+  # playback is not lost. A real active
   # route (assistant active or mapped media player playing) may wake an off
   # soundbar; fallback/legacy selectors do
   # not wake it. With one selected ULTIMEA soundbar, mapped assistants/media
@@ -2156,8 +2157,23 @@ actions:
                               continue_on_error: true
                               target:
                                 entity_id: "{{ latest_playing_entity }}"
+                            # Do not touch the soundbar source until Home Assistant
+                            # confirms that the winning media player is really
+                            # paused. Some media_player implementations can reject
+                            # or ignore media_pause; in that case preserving the
+                            # content is more important than forcing the route.
+                            - wait_template: >-
+                                {{ is_state(latest_playing_entity, 'paused') }}
+                              timeout: "00:00:02"
+                              continue_on_timeout: true
+                            - if:
+                                - condition: template
+                                  value_template: >-
+                                    {{ not is_state(latest_playing_entity, 'paused') }}
+                              then:
+                                - stop: Source handoff aborted because the media player did not confirm paused.
                             - delay:
-                                milliseconds: 250
+                                milliseconds: 150
                         - action: media_player.select_source
                           continue_on_error: true
                           target:
@@ -2166,8 +2182,14 @@ actions:
                             source: "{{ effective_requested_source }}"
                         - wait_template: >-
                             {{ state_attr(bar, 'source') == effective_requested_source }}
-                          timeout: "00:00:02"
+                          timeout: "00:00:03"
                           continue_on_timeout: true
+                        - if:
+                            - condition: template
+                              value_template: >-
+                                {{ state_attr(bar, 'source') != effective_requested_source }}
+                          then:
+                            - stop: Source handoff stopped with the media player paused because the soundbar did not confirm the requested input.
                         - if:
                             - condition: template
                               value_template: "{{ media_source_handoff_required }}"
