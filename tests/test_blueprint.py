@@ -316,7 +316,7 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "source_requested_sound_mode in source_supported_sound_modes" in text
     assert "sound_mode: \"{{ source_requested_sound_mode }}\"" in text
     assert "sound_mode: \"{{ routed_requested_sound_mode }}\"" in text
-    assert "This automation already knows which input it requested" in text
+    assert "Seed the default only after the source request has had a" in text
     assert "current_source_key" in text
     assert "current_input_players" in text
     assert "eq_connected_players" in text
