@@ -294,8 +294,8 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert 'milliseconds: 500' in text
     assert 'timeout: "00:00:02"' in text
     assert "state_attr(bar, 'source') == effective_requested_source" in text
-    assert "is_state(latest_playing_entity, 'paused')" in text
-    assert 'entity_id: "{{ latest_playing_entity }}"' in text
+    assert "handoff_players_to_pause" in text
+    assert 'entity_id: "{{ repeat.item }}"' in text
     assert "Source handoff aborted because no active pause/resume controller is available." in text
     assert "Source handoff aborted because the pause/resume controller did not confirm paused." in text
     assert "Source handoff stopped with the media player paused because the soundbar did not confirm the requested input." in text
@@ -304,9 +304,9 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert 'for_each: "{{ handoff_players_to_pause }}"' in text
 
     pause_action = text.index("action: media_player.media_pause")
-    pause_confirm = text.index("{{ is_state(latest_playing_entity, 'paused') }}", pause_action)
+    pause_confirm = text.index("{% set ns = namespace(all_paused=true) %}", pause_action)
     pause_abort = text.index(
-        "Source handoff aborted because the media player did not confirm paused.",
+        "Source handoff aborted because the pause/resume controller did not confirm paused.",
         pause_confirm,
     )
     source_action = text.index("action: media_player.select_source", pause_abort)
