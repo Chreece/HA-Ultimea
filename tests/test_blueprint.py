@@ -274,12 +274,34 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "trigger.from_state.state == 'playing'" in text
     assert "trigger.to_state.state != 'playing'" in text
     assert 'delay: "00:00:03"' in text
-    assert 'milliseconds: 250' in text
+    assert 'milliseconds: 150' in text
     assert 'milliseconds: 500' in text
     assert 'timeout: "00:00:02"' in text
     assert "state_attr(bar, 'source') == effective_requested_source" in text
     assert "is_state(latest_playing_entity, 'paused')" in text
     assert 'entity_id: "{{ latest_playing_entity }}"' in text
+    assert "Source handoff aborted because the media player did not confirm paused." in text
+    assert "Source handoff stopped with the media player paused because the soundbar did not confirm the requested input." in text
+
+    pause_action = text.index("action: media_player.media_pause")
+    pause_confirm = text.index("{{ is_state(latest_playing_entity, 'paused') }}", pause_action)
+    pause_abort = text.index(
+        "Source handoff aborted because the media player did not confirm paused.",
+        pause_confirm,
+    )
+    source_action = text.index("action: media_player.select_source", pause_abort)
+    source_confirm = text.index(
+        "{{ state_attr(bar, 'source') == effective_requested_source }}",
+        source_action,
+    )
+    source_abort = text.index(
+        "Source handoff stopped with the media player paused because the soundbar did not confirm the requested input.",
+        source_confirm,
+    )
+    resume_action = text.index("action: media_player.media_play", source_abort)
+    assert pause_action < pause_confirm < pause_abort < source_action
+    assert source_action < source_confirm < source_abort < resume_action
+
     assert "bar_volume_trigger_is_current" in text
     assert "guarded_handoff_required" in text
     assert "guarded_handoff_steps" in text
