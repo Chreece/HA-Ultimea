@@ -1804,8 +1804,11 @@ actions:
                                   - delay: "00:00:05"
 
   # Optional assistant/media-player source routing. Active mapped assistants have
-  # priority over media players. A real active route (assistant active or mapped
-  # media player playing) may wake an off soundbar; fallback/legacy selectors do
+  # priority over media players. When a playing media player must move the bar to
+  # another input, pause it for the source handoff, wait for the live source to
+  # settle, then resume it so the start of playback is not lost. A real active
+  # route (assistant active or mapped media player playing) may wake an off
+  # soundbar; fallback/legacy selectors do
   # not wake it. With one selected ULTIMEA soundbar, mapped assistants/media
   # players control it directly and do not require an HA area.
   # With multiple selected soundbars, area matching disambiguates which bar a
@@ -1837,6 +1840,28 @@ actions:
                       or bar_became_on
                       or bar_became_available) }}
         sequence:
+          # media_pause/media_play below intentionally cause state changes on the
+          # mapped player. Debounce a playing -> non-playing source trigger long
+          # enough for the handoff to resume playback; if playback came back, this
+          # parallel trigger was our transient pause and must not recalculate the
+          # route. A real/manual pause that remains paused still routes normally.
+          - if:
+              - condition: template
+                value_template: >-
+                  {{ trigger_id in ['source_media_earc', 'source_media_hdmi',
+                                    'source_media_optical', 'source_media_aux',
+                                    'source_media_bluetooth', 'source_media_usb']
+                     and trigger.from_state is not none
+                     and trigger.to_state is not none
+                     and trigger.from_state.state == 'playing'
+                     and trigger.to_state.state != 'playing' }}
+            then:
+              - delay: "00:00:03"
+              - if:
+                  - condition: template
+                    value_template: "{{ is_state(trigger_entity, 'playing') }}"
+                then:
+                  - stop: Transient source-player pause from input handoff ignored.
           - repeat:
               for_each: "{{ ultimea_players }}"
               sequence:
@@ -2002,6 +2027,29 @@ actions:
                         {% endif %}
                       {% endfor %}
                       {{ ns.source }}
+                    latest_playing_entity: >-
+                      {% set ns = namespace(entity='', changed=0) %}
+                      {% for players in [
+                           source_players_earc, source_players_hdmi,
+                           source_players_optical, source_players_aux,
+                           source_players_bluetooth, source_players_usb
+                         ] %}
+                        {% set group = [players] if players is string else players %}
+                        {% for entity in group %}
+                          {% set obj = expand(entity) | first %}
+                          {% if obj is not none and obj.state == 'playing'
+                                and ((ultimea_players is string or ultimea_players | length == 1)
+                                     or (bar_area != ''
+                                         and (area_id(entity) or '') == bar_area)) %}
+                            {% set changed = as_timestamp(obj.last_changed, 0) %}
+                            {% if changed > ns.changed %}
+                              {% set ns.entity = entity %}
+                              {% set ns.changed = changed %}
+                            {% endif %}
+                          {% endif %}
+                        {% endfor %}
+                      {% endfor %}
+                      {{ ns.entity }}
                     routing_activity_active: >-
                       {{ assistant_source_active or latest_playing_source != '' }}
                     requested_source: >-
@@ -2028,6 +2076,11 @@ actions:
                       {% else %}
                         {{ requested_source }}
                       {% endif %}
+                    media_source_handoff_required: >-
+                      {{ not assistant_source_active
+                         and latest_playing_entity != ''
+                         and is_state(latest_playing_entity, 'playing')
+                         and current_source != effective_requested_source }}
                     routed_input_sound_mode: >-
                       {% set key = effective_requested_source | lower
                            | replace(' ', '')
@@ -2095,22 +2148,43 @@ actions:
                                and effective_requested_source in supported_sources
                                and current_source != effective_requested_source }}
                       sequence:
+                        - if:
+                            - condition: template
+                              value_template: "{{ media_source_handoff_required }}"
+                          then:
+                            - action: media_player.media_pause
+                              continue_on_error: true
+                              target:
+                                entity_id: "{{ latest_playing_entity }}"
+                            - delay:
+                                milliseconds: 250
                         - action: media_player.select_source
                           continue_on_error: true
                           target:
                             entity_id: "{{ bar }}"
                           data:
                             source: "{{ effective_requested_source }}"
-                        # This automation already knows which input it requested,
-                        # so seed that input's default in the same routing run.
-                        # The bar_source_change listener remains the fallback for
-                        # remote/app/manual source changes.
+                        - wait_template: >-
+                            {{ state_attr(bar, 'source') == effective_requested_source }}
+                          timeout: "00:00:02"
+                          continue_on_timeout: true
+                        - if:
+                            - condition: template
+                              value_template: "{{ media_source_handoff_required }}"
+                          then:
+                            - delay:
+                                milliseconds: 500
+                        # Seed the default only after the source request has had a
+                        # chance to settle. The bar_source_change listener remains
+                        # the fallback for remote/app/manual source changes.
                         - if:
                             - condition: template
                               value_template: >-
-                                {{ routed_requested_sound_mode != ''
+                                {{ state_attr(bar, 'source') == effective_requested_source
+                                   and routed_requested_sound_mode != ''
                                    and routed_requested_sound_mode in routed_supported_sound_modes
-                                   and routed_current_sound_mode != routed_requested_sound_mode }}
+                                   and (state_attr(bar, 'sound_mode') or '')
+                                       != routed_requested_sound_mode }}
                           then:
                             - action: media_player.select_sound_mode
                               continue_on_error: true
@@ -2118,6 +2192,16 @@ actions:
                                 entity_id: "{{ bar }}"
                               data:
                                 sound_mode: "{{ routed_requested_sound_mode }}"
+                        - if:
+                            - condition: template
+                              value_template: >-
+                                {{ media_source_handoff_required
+                                   and is_state(latest_playing_entity, 'paused') }}
+                          then:
+                            - action: media_player.media_play
+                              continue_on_error: true
+                              target:
+                                entity_id: "{{ latest_playing_entity }}"
 
   # Optional provider-agnostic content/AI hook. Run it only when the changed
   # connected media player belongs to the soundbar's CURRENT input mapping.
