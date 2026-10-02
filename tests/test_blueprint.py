@@ -203,6 +203,8 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
         "media_player.select_sound_mode",
         "media_player.select_source",
         "media_player.turn_on",
+        "media_player.media_pause",
+        "media_player.media_play",
     ):
         assert action in text
 
@@ -239,6 +241,8 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     ):
         assert trigger_id in text
     assert "latest_playing_source" in text
+    assert "latest_playing_entity" in text
+    assert "media_source_handoff_required" in text
     assert "assistant_source_active" in text
     assert "bar_became_available" in text
     assert "trigger.from_state.state in ['unknown', 'unavailable']" in text
@@ -266,6 +270,16 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "requested_source == 'eARC'" in text
     assert "'ARC' in supported_sources" in text
     assert "source_list" in text
+    assert "Transient source-player pause from input handoff ignored." in text
+    assert "trigger.from_state.state == 'playing'" in text
+    assert "trigger.to_state.state != 'playing'" in text
+    assert 'delay: "00:00:03"' in text
+    assert 'milliseconds: 250' in text
+    assert 'milliseconds: 500' in text
+    assert 'timeout: "00:00:02"' in text
+    assert "state_attr(bar, 'source') == effective_requested_source" in text
+    assert "is_state(latest_playing_entity, 'paused')" in text
+    assert 'entity_id: "{{ latest_playing_entity }}"' in text
     assert "bar_volume_trigger_is_current" in text
     assert "guarded_handoff_required" in text
     assert "guarded_handoff_steps" in text
