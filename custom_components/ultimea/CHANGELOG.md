@@ -4,6 +4,17 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.02.2
+
+### Fixed
+
+- Source handoff now requires the winning media player to **actually report `paused`** before the blueprint is allowed to change the ULTIMEA input.
+- If `media_pause` is rejected, ignored, or never reaches `paused` within two seconds, the handoff aborts before touching the soundbar source so the notification/content is not sacrificed.
+- After confirmed pause, the blueprint waits 150 ms, requests the source, and requires the bar's live `source` attribute to confirm the requested input within three seconds.
+- If the soundbar never confirms the new source, the automation stops with the media player still paused rather than resuming content into the wrong input.
+- Only after confirmed source plus the existing 500 ms settle window does the blueprint apply the input default sound mode and resume the same media player.
+- Added order-sensitive regression coverage proving pause confirmation must precede `select_source` and source confirmation must precede resume.
+
 ## 2026.10.02.1
 
 ### Changed
