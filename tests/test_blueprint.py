@@ -78,6 +78,12 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "source_players_aux",
         "source_players_bluetooth",
         "source_players_usb",
+        "handoff_players_earc",
+        "handoff_players_hdmi",
+        "handoff_players_optical",
+        "handoff_players_aux",
+        "handoff_players_bluetooth",
+        "handoff_players_usb",
         "source_assistants",
         "assistant_source",
         "source_fallback",
@@ -139,6 +145,12 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
         "source_players_aux",
         "source_players_bluetooth",
         "source_players_usb",
+        "handoff_players_earc",
+        "handoff_players_hdmi",
+        "handoff_players_optical",
+        "handoff_players_aux",
+        "handoff_players_bluetooth",
+        "handoff_players_usb",
     ):
         selector = inputs[key]["selector"]["entity"]
         assert selector["multiple"] is True
@@ -242,6 +254,10 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
         assert trigger_id in text
     assert "latest_playing_source" in text
     assert "latest_playing_entity" in text
+    assert "configured_handoff_players" in text
+    assert "eligible_handoff_players" in text
+    assert "has_configured_handoff_players" in text
+    assert "handoff_players_to_pause" in text
     assert "media_source_handoff_required" in text
     assert "assistant_source_active" in text
     assert "bar_became_available" in text
@@ -280,8 +296,12 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "state_attr(bar, 'source') == effective_requested_source" in text
     assert "is_state(latest_playing_entity, 'paused')" in text
     assert 'entity_id: "{{ latest_playing_entity }}"' in text
-    assert "Source handoff aborted because the media player did not confirm paused." in text
+    assert "Source handoff aborted because no active pause/resume controller is available." in text
+    assert "Source handoff aborted because the pause/resume controller did not confirm paused." in text
     assert "Source handoff stopped with the media player paused because the soundbar did not confirm the requested input." in text
+    assert "{% if has_configured_handoff_players %}" in text
+    assert "{% set ns.players = [latest_playing_entity] %}" in text
+    assert 'for_each: "{{ handoff_players_to_pause }}"' in text
 
     pause_action = text.index("action: media_player.media_pause")
     pause_confirm = text.index("{{ is_state(latest_playing_entity, 'paused') }}", pause_action)
