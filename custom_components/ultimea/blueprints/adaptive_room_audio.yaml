@@ -1067,6 +1067,25 @@ actions:
            and state_attr(trigger_entity, 'volume_level') is not none
            and (state_attr(trigger_entity, 'volume_level') | float(0)
                 - trigger.to_state.attributes.get('volume_level') | float(0)) | abs <= 0.004 }}
+      bar_volume_learning_safe: >-
+        {% if not bar_volume_changed %}
+          false
+        {% else %}
+          {% set source_unchanged =
+             trigger.from_state.attributes.get('source')
+             == trigger.to_state.attributes.get('source') %}
+          {% set on_age =
+             as_timestamp(trigger.to_state.last_updated)
+             - as_timestamp(trigger.to_state.last_changed) %}
+          {% set automation_origin =
+             trigger.to_state.context.parent_id is not none
+             and trigger.to_state.context.user_id is none %}
+          {{ trigger.from_state.state == 'on'
+             and trigger.to_state.state == 'on'
+             and source_unchanged
+             and not automation_origin
+             and on_age >= 10 }}
+        {% endif %}
       bar_became_on: >-
         {{ trigger_id == 'bar_state_change'
            and trigger.from_state is not none
@@ -1081,15 +1100,21 @@ actions:
            and trigger.to_state.state not in ['unknown', 'unavailable'] }}
 
   # A current volume attribute change on an ULTIMEA media player is special:
-  # if it is not the value this blueprint currently calculates, treat it as a
-  # manual adjustment and learn it into the active endpoint. Queued stale events
-  # from intermediate handoff steps are ignored once the live volume has moved on.
+  # once the bar has been stably on for ten seconds and the source itself did not
+  # change in the same state update, a value that differs from this blueprint's
+  # current target is treated as a manual adjustment and learned into the active
+  # endpoint. The settling guard prevents a power-on/startup hardware volume
+  # recall (for example last night's quiet volume) from overwriting today's normal
+  # maximum, and automation-originated volume writes are never learned as manual
+  # changes. Queued stale events from intermediate handoff steps are ignored once
+  # the live volume has moved on.
   - choose:
       - conditions:
           - condition: template
             value_template: >-
               {{ apply_volume_follow and bar_volume_changed
-                 and bar_volume_trigger_is_current }}
+                 and bar_volume_trigger_is_current
+                 and bar_volume_learning_safe }}
         sequence:
           - variables:
               manual_bar: "{{ trigger_entity }}"
