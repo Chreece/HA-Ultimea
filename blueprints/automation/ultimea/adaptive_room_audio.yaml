@@ -1077,9 +1077,13 @@ actions:
           {% set on_age =
              as_timestamp(trigger.to_state.last_updated)
              - as_timestamp(trigger.to_state.last_changed) %}
+          {% set automation_origin =
+             trigger.to_state.context.parent_id is not none
+             and trigger.to_state.context.user_id is none %}
           {{ trigger.from_state.state == 'on'
              and trigger.to_state.state == 'on'
              and source_unchanged
+             and not automation_origin
              and on_age >= 10 }}
         {% endif %}
       bar_became_on: >-
@@ -1101,7 +1105,8 @@ actions:
   # current target is treated as a manual adjustment and learned into the active
   # endpoint. The settling guard prevents a power-on/startup hardware volume
   # recall (for example last night's quiet volume) from overwriting today's normal
-  # maximum. Queued stale events from intermediate handoff steps are ignored once
+  # maximum, and automation-originated volume writes are never learned as manual
+  # changes. Queued stale events from intermediate handoff steps are ignored once
   # the live volume has moved on.
   - choose:
       - conditions:
