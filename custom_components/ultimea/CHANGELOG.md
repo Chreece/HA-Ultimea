@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.03
+
+### Fixed
+
+- Prevented a soundbar's remembered power-on volume from being mistaken for a manual adjustment and overwriting the learned normal/max-volume helper.
+- Manual volume learning now waits until the soundbar has been continuously on for at least 10 seconds, ignores volume changes that arrive together with a source change, and ignores automation-originated volume writes.
+- Genuine manual volume changes remain learnable after the soundbar has settled.
+
 ## 2026.10.02.3
 
 ### Added
