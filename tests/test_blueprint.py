@@ -254,6 +254,9 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
         assert trigger_id in text
     assert "latest_playing_source" in text
     assert "latest_playing_entity" in text
+    assert "source_start_trigger_active" in text
+    assert "source_start_handoff_needed" in text
+    assert "source_start_handoff_players" in text
     assert "configured_handoff_players" in text
     assert "eligible_handoff_players" in text
     assert "has_configured_handoff_players" in text
@@ -289,9 +292,10 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "Transient source-player pause from input handoff ignored." in text
     assert "trigger.from_state.state == 'playing'" in text
     assert "trigger.to_state.state != 'playing'" in text
-    assert 'delay: "00:00:03"' in text
+    assert 'delay: "00:00:06"' in text
     assert 'milliseconds: 150' in text
     assert 'milliseconds: 500' in text
+    assert 'milliseconds: 2000' in text
     assert 'timeout: "00:00:02"' in text
     assert "state_attr(bar, 'source') == effective_requested_source" in text
     assert "handoff_players_to_pause" in text
@@ -304,6 +308,9 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert 'for_each: "{{ handoff_players_to_pause }}"' in text
 
     pause_action = text.index("action: media_player.media_pause")
+    policy_calculations = text.index("now_seconds:")
+    assert pause_action < policy_calculations
+
     pause_confirm = text.index("{% set ns = namespace(all_paused=true) %}", pause_action)
     pause_abort = text.index(
         "Source handoff aborted because the pause/resume controller did not confirm paused.",
