@@ -844,23 +844,59 @@ triggers:
   - trigger: state
     entity_id: !input audio_input_selectors
     id: audio_input_change
+  # Source routing only needs real playback-state edges. Without from/to
+  # filters, Home Assistant also fires a state trigger for attribute-only updates.
+  # Some TV integrations refresh attributes such as volume_level while their state
+  # remains "on"; during a protected AUX handoff that unrelated update can see the
+  # temporarily paused AUX player and incorrectly route the fallback source.
+  # Keep the same trigger IDs for both edges so the routing logic below stays shared.
   - trigger: state
     entity_id: !input source_players_earc
+    to: "playing"
+    id: source_media_earc
+  - trigger: state
+    entity_id: !input source_players_earc
+    from: "playing"
     id: source_media_earc
   - trigger: state
     entity_id: !input source_players_hdmi
+    to: "playing"
+    id: source_media_hdmi
+  - trigger: state
+    entity_id: !input source_players_hdmi
+    from: "playing"
     id: source_media_hdmi
   - trigger: state
     entity_id: !input source_players_optical
+    to: "playing"
+    id: source_media_optical
+  - trigger: state
+    entity_id: !input source_players_optical
+    from: "playing"
     id: source_media_optical
   - trigger: state
     entity_id: !input source_players_aux
+    to: "playing"
+    id: source_media_aux
+  - trigger: state
+    entity_id: !input source_players_aux
+    from: "playing"
     id: source_media_aux
   - trigger: state
     entity_id: !input source_players_bluetooth
+    to: "playing"
+    id: source_media_bluetooth
+  - trigger: state
+    entity_id: !input source_players_bluetooth
+    from: "playing"
     id: source_media_bluetooth
   - trigger: state
     entity_id: !input source_players_usb
+    to: "playing"
+    id: source_media_usb
+  - trigger: state
+    entity_id: !input source_players_usb
+    from: "playing"
     id: source_media_usb
   - trigger: state
     entity_id: !input source_assistants
@@ -907,6 +943,7 @@ actions:
                           'source_media_bluetooth', 'source_media_usb']
            and trigger.from_state is not none
            and trigger.to_state is not none
+           and trigger.from_state.state != 'playing'
            and trigger.to_state.state == 'playing' }}
       source_start_requested_source: >-
         {% if trigger_id == 'source_media_earc' %}
@@ -1017,6 +1054,17 @@ actions:
               continue_on_error: true
               target:
                 entity_id: "{{ repeat.item }}"
+  - if:
+      - condition: template
+        value_template: >-
+          {{ trigger_id in ['source_media_earc', 'source_media_hdmi',
+                            'source_media_optical', 'source_media_aux',
+                            'source_media_bluetooth', 'source_media_usb']
+             and trigger.from_state is not none
+             and trigger.to_state is not none
+             and trigger.from_state.state == trigger.to_state.state }}
+    then:
+      - stop: Source routing ignored media-player attribute-only update.
   - variables:
       now_seconds: >-
         {{ now().hour * 3600 + now().minute * 60 + now().second }}
