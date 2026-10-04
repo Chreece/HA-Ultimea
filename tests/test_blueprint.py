@@ -206,6 +206,35 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     assert inputs["handoff_transition"]["default"]["seconds"] == 15
 
 
+def test_source_routing_triggers_only_on_playback_state_edges() -> None:
+    data = _load_blueprint()
+    triggers = data["triggers"]
+
+    source_inputs = {
+        "source_media_earc": "source_players_earc",
+        "source_media_hdmi": "source_players_hdmi",
+        "source_media_optical": "source_players_optical",
+        "source_media_aux": "source_players_aux",
+        "source_media_bluetooth": "source_players_bluetooth",
+        "source_media_usb": "source_players_usb",
+    }
+
+    for trigger_id, input_name in source_inputs.items():
+        matches = [
+            trigger
+            for trigger in triggers
+            if trigger.get("id") == trigger_id
+            and trigger.get("entity_id") == {"!input": input_name}
+        ]
+        assert len(matches) == 2
+        assert any(trigger.get("to") == "playing" for trigger in matches)
+        assert any(trigger.get("from") == "playing" for trigger in matches)
+
+        for trigger in matches:
+            assert trigger.get("trigger") == "state"
+            assert trigger.get("from") == "playing" or trigger.get("to") == "playing"
+
+
 def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     text = BLUEPRINT.read_text(encoding="utf-8")
 
@@ -255,6 +284,9 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "latest_playing_source" in text
     assert "latest_playing_entity" in text
     assert "source_start_trigger_active" in text
+    assert "trigger.from_state.state != 'playing'" in text
+    assert "Source routing ignored media-player attribute-only update." in text
+    assert "trigger.from_state.state == trigger.to_state.state" in text
     assert "source_start_handoff_needed" in text
     assert "source_start_handoff_players" in text
     assert "configured_handoff_players" in text
