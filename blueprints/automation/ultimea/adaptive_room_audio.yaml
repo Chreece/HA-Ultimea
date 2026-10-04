@@ -890,10 +890,134 @@ triggers:
 conditions: []
 
 actions:
+  # Source-start fast path: a mapped player can begin producing audio almost
+  # immediately after its state becomes playing. Issue the pause request before
+  # the rest of the blueprint's policy calculations so the first words of a TTS
+  # or announcement are not consumed while the soundbar changes input/EQ. The
+  # normal routing block below still owns confirmation, source switching and
+  # resume; this early action only gets the pause request onto the controller
+  # sooner.
   - variables:
       trigger_id: "{{ trigger.id | default('') }}"
       trigger_entity: >-
         {{ trigger.entity_id if trigger is defined and trigger.platform == 'state' else '' }}
+      source_start_trigger_active: >-
+        {{ trigger_id in ['source_media_earc', 'source_media_hdmi',
+                          'source_media_optical', 'source_media_aux',
+                          'source_media_bluetooth', 'source_media_usb']
+           and trigger.from_state is not none
+           and trigger.to_state is not none
+           and trigger.to_state.state == 'playing' }}
+      source_start_requested_source: >-
+        {% if trigger_id == 'source_media_earc' %}
+          eARC
+        {% elif trigger_id == 'source_media_hdmi' %}
+          HDMI
+        {% elif trigger_id == 'source_media_optical' %}
+          Optical
+        {% elif trigger_id == 'source_media_aux' %}
+          AUX
+        {% elif trigger_id == 'source_media_bluetooth' %}
+          Bluetooth
+        {% elif trigger_id == 'source_media_usb' %}
+          USB
+        {% else %}
+          {{ '' }}
+        {% endif %}
+      source_start_trigger_area: >-
+        {{ (area_id(trigger_entity) or '') if trigger_entity else '' }}
+      source_start_configured_handoff_players: >-
+        {% if trigger_id == 'source_media_earc' %}
+          {{ [handoff_players_earc] if handoff_players_earc is string else handoff_players_earc }}
+        {% elif trigger_id == 'source_media_hdmi' %}
+          {{ [handoff_players_hdmi] if handoff_players_hdmi is string else handoff_players_hdmi }}
+        {% elif trigger_id == 'source_media_optical' %}
+          {{ [handoff_players_optical] if handoff_players_optical is string else handoff_players_optical }}
+        {% elif trigger_id == 'source_media_aux' %}
+          {{ [handoff_players_aux] if handoff_players_aux is string else handoff_players_aux }}
+        {% elif trigger_id == 'source_media_bluetooth' %}
+          {{ [handoff_players_bluetooth] if handoff_players_bluetooth is string else handoff_players_bluetooth }}
+        {% elif trigger_id == 'source_media_usb' %}
+          {{ [handoff_players_usb] if handoff_players_usb is string else handoff_players_usb }}
+        {% else %}
+          {{ [] }}
+        {% endif %}
+  - variables:
+      source_start_handoff_needed: >-
+        {% set ns = namespace(needed=false) %}
+        {% if source_start_trigger_active and source_start_requested_source != '' %}
+          {% set bars = [ultimea_players] if ultimea_players is string else ultimea_players %}
+          {% set assistants = [source_assistants] if source_assistants is string else source_assistants %}
+          {% for candidate_bar in bars %}
+            {% set bar_area = area_id(candidate_bar) or '' %}
+            {% set affects_bar =
+                 (ultimea_players is string or ultimea_players | length == 1)
+                 or (source_start_trigger_area != '' and bar_area != ''
+                     and source_start_trigger_area == bar_area) %}
+            {% set assistant_ns = namespace(active=false) %}
+            {% if assistant_source != 'No change' %}
+              {% for assistant in assistants %}
+                {% set obj = expand(assistant) | first %}
+                {% if obj is not none
+                      and obj.state not in ['idle', 'unknown', 'unavailable']
+                      and ((ultimea_players is string or ultimea_players | length == 1)
+                           or (bar_area != '' and (area_id(assistant) or '') == bar_area)) %}
+                  {% set assistant_ns.active = true %}
+                {% endif %}
+              {% endfor %}
+            {% endif %}
+            {% set supported = state_attr(candidate_bar, 'source_list') | default([], true) %}
+            {% set effective_source =
+                 'ARC'
+                 if source_start_requested_source == 'eARC'
+                    and 'eARC' not in supported and 'ARC' in supported
+                 else source_start_requested_source %}
+            {% if affects_bar
+                  and not assistant_ns.active
+                  and is_state(candidate_bar, 'on')
+                  and effective_source in supported
+                  and (state_attr(candidate_bar, 'source') or '') != effective_source %}
+              {% set ns.needed = true %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+        {{ ns.needed }}
+      source_start_eligible_handoff_players: >-
+        {% set ns = namespace(players=[]) %}
+        {% for entity in source_start_configured_handoff_players %}
+          {% if (ultimea_players is string or ultimea_players | length == 1)
+                or (source_start_trigger_area != ''
+                    and (area_id(entity) or '') == source_start_trigger_area) %}
+            {% set ns.players = ns.players + [entity] %}
+          {% endif %}
+        {% endfor %}
+        {{ ns.players }}
+      source_start_handoff_players: >-
+        {% set ns = namespace(players=[]) %}
+        {% if source_start_handoff_needed %}
+          {% if source_start_eligible_handoff_players | length > 0 %}
+            {% for entity in source_start_eligible_handoff_players %}
+              {% if is_state(entity, 'playing') %}
+                {% set ns.players = ns.players + [entity] %}
+              {% endif %}
+            {% endfor %}
+          {% elif trigger_entity != '' and is_state(trigger_entity, 'playing') %}
+            {% set ns.players = [trigger_entity] %}
+          {% endif %}
+        {% endif %}
+        {{ ns.players }}
+  - if:
+      - condition: template
+        value_template: "{{ source_start_handoff_players | length > 0 }}"
+    then:
+      - repeat:
+          for_each: "{{ source_start_handoff_players }}"
+          sequence:
+            - action: media_player.media_pause
+              continue_on_error: true
+              target:
+                entity_id: "{{ repeat.item }}"
+  - variables:
       now_seconds: >-
         {{ now().hour * 3600 + now().minute * 60 + now().second }}
       quiet_start_seconds: >-
@@ -1963,7 +2087,7 @@ actions:
                      and trigger.from_state.state == 'playing'
                      and trigger.to_state.state != 'playing' }}
             then:
-              - delay: "00:00:03"
+              - delay: "00:00:06"
               - if:
                   - condition: template
                     value_template: "{{ is_state(trigger_entity, 'playing') }}"
@@ -2058,7 +2182,10 @@ actions:
                       {% set players = [source_players_earc] if source_players_earc is string else source_players_earc %}
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
-                        {% if obj is not none and obj.state == 'playing'
+                        {% if obj is not none
+                              and (obj.state == 'playing'
+                                   or (source_start_trigger_active
+                                       and entity == trigger_entity))
                               and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
@@ -2071,7 +2198,10 @@ actions:
                       {% set players = [source_players_hdmi] if source_players_hdmi is string else source_players_hdmi %}
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
-                        {% if obj is not none and obj.state == 'playing'
+                        {% if obj is not none
+                              and (obj.state == 'playing'
+                                   or (source_start_trigger_active
+                                       and entity == trigger_entity))
                               and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
@@ -2084,7 +2214,10 @@ actions:
                       {% set players = [source_players_optical] if source_players_optical is string else source_players_optical %}
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
-                        {% if obj is not none and obj.state == 'playing'
+                        {% if obj is not none
+                              and (obj.state == 'playing'
+                                   or (source_start_trigger_active
+                                       and entity == trigger_entity))
                               and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
@@ -2097,7 +2230,10 @@ actions:
                       {% set players = [source_players_aux] if source_players_aux is string else source_players_aux %}
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
-                        {% if obj is not none and obj.state == 'playing'
+                        {% if obj is not none
+                              and (obj.state == 'playing'
+                                   or (source_start_trigger_active
+                                       and entity == trigger_entity))
                               and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
@@ -2110,7 +2246,10 @@ actions:
                       {% set players = [source_players_bluetooth] if source_players_bluetooth is string else source_players_bluetooth %}
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
-                        {% if obj is not none and obj.state == 'playing'
+                        {% if obj is not none
+                              and (obj.state == 'playing'
+                                   or (source_start_trigger_active
+                                       and entity == trigger_entity))
                               and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
@@ -2123,7 +2262,10 @@ actions:
                       {% set players = [source_players_usb] if source_players_usb is string else source_players_usb %}
                       {% for entity in players %}
                         {% set obj = expand(entity) | first %}
-                        {% if obj is not none and obj.state == 'playing'
+                        {% if obj is not none
+                              and (obj.state == 'playing'
+                                   or (source_start_trigger_active
+                                       and entity == trigger_entity))
                               and ((ultimea_players is string or ultimea_players | length == 1)
                                    or (bar_area != '' and (area_id(entity) or '') == bar_area)) %}
                           {% set changed = as_timestamp(obj.last_changed, 0) %}
@@ -2144,7 +2286,10 @@ actions:
                         {% set group = [players] if players is string else players %}
                         {% for entity in group %}
                           {% set obj = expand(entity) | first %}
-                          {% if obj is not none and obj.state == 'playing'
+                          {% if obj is not none
+                              and (obj.state == 'playing'
+                                   or (source_start_trigger_active
+                                       and entity == trigger_entity))
                                 and ((ultimea_players is string or ultimea_players | length == 1)
                                      or (bar_area != ''
                                          and (area_id(entity) or '') == bar_area)) %}
@@ -2224,19 +2369,23 @@ actions:
                       {% set ns = namespace(players=[]) %}
                       {% if has_configured_handoff_players %}
                         {% for entity in eligible_handoff_players %}
-                          {% if is_state(entity, 'playing') %}
+                          {% if is_state(entity, 'playing')
+                                or entity in source_start_handoff_players %}
                             {% set ns.players = ns.players + [entity] %}
                           {% endif %}
                         {% endfor %}
                       {% elif latest_playing_entity != ''
-                            and is_state(latest_playing_entity, 'playing') %}
+                            and (is_state(latest_playing_entity, 'playing')
+                                 or latest_playing_entity in source_start_handoff_players) %}
                         {% set ns.players = [latest_playing_entity] %}
                       {% endif %}
                       {{ ns.players }}
                     media_source_handoff_required: >-
                       {{ not assistant_source_active
                          and latest_playing_entity != ''
-                         and is_state(latest_playing_entity, 'playing')
+                         and (is_state(latest_playing_entity, 'playing')
+                              or (source_start_trigger_active
+                                  and latest_playing_entity == trigger_entity))
                          and current_source != effective_requested_source }}
                     routed_input_sound_mode: >-
                       {% set key = effective_requested_source | lower
@@ -2318,10 +2467,14 @@ actions:
                             - repeat:
                                 for_each: "{{ handoff_players_to_pause }}"
                                 sequence:
-                                  - action: media_player.media_pause
-                                    continue_on_error: true
-                                    target:
-                                      entity_id: "{{ repeat.item }}"
+                                  - if:
+                                      - condition: template
+                                        value_template: "{{ not is_state(repeat.item, 'paused') }}"
+                                    then:
+                                      - action: media_player.media_pause
+                                        continue_on_error: true
+                                        target:
+                                          entity_id: "{{ repeat.item }}"
                             # Do not touch the soundbar source until every selected
                             # upstream controller confirms paused. When explicit
                             # controllers are configured, the mapped route trigger
@@ -2391,10 +2544,16 @@ actions:
                                 entity_id: "{{ bar }}"
                               data:
                                 sound_mode: "{{ routed_requested_sound_mode }}"
+                        # The source attribute can confirm before the ULTIMEA DSP/audio
+                        # path is actually ready. Keep playback paused through the input
+                        # transition and any one-shot input sound-mode update, then give
+                        # the hardware a full two seconds to settle before resuming.
                         - if:
                             - condition: template
                               value_template: "{{ media_source_handoff_required }}"
                           then:
+                            - delay:
+                                milliseconds: 2000
                             - repeat:
                                 for_each: "{{ handoff_players_to_pause }}"
                                 sequence:
