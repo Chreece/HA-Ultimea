@@ -292,7 +292,13 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "Transient source-player pause from input handoff ignored." in text
     assert "trigger.from_state.state == 'playing'" in text
     assert "trigger.to_state.state != 'playing'" in text
-    assert 'delay: "00:00:06"' in text
+    # The transient-pause observer must outlive the worst-case protected
+    # handoff budget: 2 s pause confirmation + 150 ms pre-source settle +
+    # 3 s source confirmation + 500 ms source settle + 2 s DSP settle = 7.65 s.
+    # Otherwise the observer can wrongly route the fallback source before the
+    # original handoff has resumed playback, producing an AUX/eARC ping-pong.
+    assert 'delay: "00:00:10"' in text
+    assert 'delay: "00:00:06"' not in text
     assert 'milliseconds: 150' in text
     assert 'milliseconds: 500' in text
     assert 'milliseconds: 2000' in text
