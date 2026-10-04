@@ -2072,10 +2072,13 @@ actions:
                       or bar_became_available) }}
         sequence:
           # media_pause/media_play below intentionally cause state changes on the
-          # mapped player. Debounce a playing -> non-playing source trigger long
-          # enough for the handoff to resume playback; if playback came back, this
-          # parallel trigger was our transient pause and must not recalculate the
-          # route. A real/manual pause that remains paused still routes normally.
+          # mapped player. The protected handoff can legally consume up to 7.65 s
+          # before resume (2 s pause confirmation + 150 ms pre-source settle +
+          # 3 s source confirmation + 500 ms source settle + 2 s DSP settle), so
+          # the pause-trigger guard MUST outlive that whole budget. Ten seconds
+          # prevents our own temporary pause from falling through into fallback
+          # routing while still allowing a genuine/manual pause to recalculate
+          # the route after the guard expires.
           - if:
               - condition: template
                 value_template: >-
@@ -2087,7 +2090,7 @@ actions:
                      and trigger.from_state.state == 'playing'
                      and trigger.to_state.state != 'playing' }}
             then:
-              - delay: "00:00:06"
+              - delay: "00:00:10"
               - if:
                   - condition: template
                     value_template: "{{ is_state(trigger_entity, 'playing') }}"
