@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.04.2
+
+### Fixed
+
+- Source-routing media-player triggers now react only when a mapped player enters or leaves the `playing` state. Attribute-only refreshes no longer participate in source selection.
+- This prevents unrelated TV attribute updates (for example a changing `volume_level` while the TV remains `on`) from selecting the fallback eARC input while an AUX announcement player is temporarily paused by the protected handoff.
+- Added a defensive runtime guard for attribute-only source events and regression coverage for all eARC/HDMI/Optical/AUX/Bluetooth/USB source trigger pairs.
+
 ## 2026.10.04.1
 
 ### Fixed
