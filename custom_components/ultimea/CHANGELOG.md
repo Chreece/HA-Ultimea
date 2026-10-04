@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.04
+
+### Fixed
+
+- Source handoffs now issue the pause request on the mapped playback controller at the start of a new mapped `playing` event, before the blueprint evaluates the rest of its volume/routing policy.
+- The triggering route is preserved logically after this early pause so source selection still completes instead of mistaking the blueprint's own pause for the end of playback.
+- Playback remains paused through source confirmation and the one-shot input sound-mode update, then waits an additional two seconds for the ULTIMEA audio/DSP path to settle before resuming.
+- The transient-pause debounce window is extended to cover the longer protected handoff without allowing the blueprint's own pause event to start a competing fallback route.
+
 ## 2026.10.03
 
 ### Fixed
