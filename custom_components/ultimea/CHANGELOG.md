@@ -4,6 +4,14 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.04.1
+
+### Fixed
+
+- Fixed a source-routing feedback loop where the six-second transient-pause guard could expire before a protected source handoff had finished.
+- The full handoff can legitimately take up to 7.65 seconds before playback resumes (pause confirmation, input confirmation, source settle and DSP settle). The guard is now 10 seconds so the blueprint cannot mistake its own temporary pause for a real stopped route and bounce AUX back to the fallback source.
+- This guard runs only on the parallel pause-observer path; it does not add 10 seconds to the announcement handoff or delay playback resume.
+
 ## 2026.10.04
 
 ### Fixed
