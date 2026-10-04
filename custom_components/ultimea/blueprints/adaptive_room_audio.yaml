@@ -2119,14 +2119,11 @@ actions:
                       or bar_became_on
                       or bar_became_available) }}
         sequence:
-          # media_pause/media_play below intentionally cause state changes on the
-          # mapped player. The protected handoff can legally consume up to 7.65 s
-          # before resume (2 s pause confirmation + 150 ms pre-source settle +
-          # 3 s source confirmation + 500 ms source settle + 2 s DSP settle), so
-          # the pause-trigger guard MUST outlive that whole budget. Ten seconds
-          # prevents our own temporary pause from falling through into fallback
-          # routing while still allowing a genuine/manual pause to recalculate
-          # the route after the guard expires.
+          # media_pause/media_play below intentionally cause a playing -> paused
+          # state change on the mapped player. Only that paused edge needs the
+          # transient-handoff guard. A real playback stop normally leaves playing
+          # for idle/off and must recalculate routing immediately instead of waiting
+          # through the ten-second handoff guard.
           - if:
               - condition: template
                 value_template: >-
@@ -2136,7 +2133,7 @@ actions:
                      and trigger.from_state is not none
                      and trigger.to_state is not none
                      and trigger.from_state.state == 'playing'
-                     and trigger.to_state.state != 'playing' }}
+                     and trigger.to_state.state == 'paused' }}
             then:
               - delay: "00:00:10"
               - if:
