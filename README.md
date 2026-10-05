@@ -5,9 +5,6 @@
   </a>
 </p>
 
-
-💙 **Enjoying this hobby project? [Send a voluntary thank-you via Ko-fi](https://ko-fi.com/chreece).**
-
 <p align="center">
   <img src="custom_components/ultimea/brand/logo.png" alt="ULTIMEA for Home Assistant" width="640">
 </p>
