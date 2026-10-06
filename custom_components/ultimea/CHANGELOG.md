@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.06
+
+### Fixed
+
+- A newly playing media player mapped to eARC, HDMI, Optical, AUX, Bluetooth, or USB now wakes an affected ULTIMEA soundbar immediately when the bar is off, before the slower routing policy calculations run.
+- Genuine source stops such as `playing -> idle/off` no longer wait through the ten-second transient handoff guard; that guard is now limited to `playing -> paused`, preserving the protected announcement/input-handoff path.
+- Kept the existing attribute-only source-event protection and the confirmed pause/source/EQ/resume handoff behavior unchanged.
+- Added regression coverage for both immediate source-start wake-up and the paused-only transient guard.
+
 ## 2026.10.04.2
 
 ### Fixed

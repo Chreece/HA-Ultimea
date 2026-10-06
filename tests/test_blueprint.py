@@ -206,6 +206,30 @@ def test_blueprint_exposes_requested_control_inputs() -> None:
     assert inputs["handoff_transition"]["default"]["seconds"] == 15
 
 
+def test_new_mapped_source_start_wakes_off_bar_before_policy_calculations() -> None:
+    text = BLUEPRINT.read_text(encoding="utf-8")
+
+    wake_var = text.index("source_start_wake_bars")
+    wake_action = text.index("action: media_player.turn_on", wake_var)
+    policy_calculations = text.index("now_seconds:")
+
+    assert "source_start_trigger_active and source_start_requested_source != ''" in text
+    assert "and is_state(candidate_bar, 'off')" in text
+    assert 'for_each: "{{ source_start_wake_bars }}"' in text
+    assert wake_var < wake_action < policy_calculations
+
+
+def test_real_source_stop_is_not_delayed_by_transient_pause_guard() -> None:
+    text = BLUEPRINT.read_text(encoding="utf-8")
+    guard = text.index("Transient source-player pause from input handoff ignored.")
+    prefix = text[max(0, guard - 1800):guard]
+
+    assert "trigger.from_state.state == 'playing'" in prefix
+    assert "trigger.to_state.state == 'paused'" in prefix
+    assert "trigger.to_state.state != 'playing'" not in prefix
+    assert 'delay: "00:00:10"' in prefix
+
+
 def test_source_routing_triggers_only_on_playback_state_edges() -> None:
     data = _load_blueprint()
     triggers = data["triggers"]
@@ -287,6 +311,7 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "trigger.from_state.state != 'playing'" in text
     assert "Source routing ignored media-player attribute-only update." in text
     assert "trigger.from_state.state == trigger.to_state.state" in text
+    assert "source_start_wake_bars" in text
     assert "source_start_handoff_needed" in text
     assert "source_start_handoff_players" in text
     assert "configured_handoff_players" in text
@@ -323,7 +348,8 @@ def test_blueprint_contains_learning_transition_and_audio_actions() -> None:
     assert "source_list" in text
     assert "Transient source-player pause from input handoff ignored." in text
     assert "trigger.from_state.state == 'playing'" in text
-    assert "trigger.to_state.state != 'playing'" in text
+    assert "trigger.to_state.state == 'paused'" in text
+    assert "trigger.to_state.state != 'playing'" not in text
     # The transient-pause observer must outlive the worst-case protected
     # handoff budget: 2 s pause confirmation + 150 ms pre-source settle +
     # 3 s source confirmation + 500 ms source settle + 2 s DSP settle = 7.65 s.
