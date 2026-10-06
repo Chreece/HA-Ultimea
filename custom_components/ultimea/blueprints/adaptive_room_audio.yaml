@@ -927,12 +927,12 @@ conditions: []
 
 actions:
   # Source-start fast path: a mapped player can begin producing audio almost
-  # immediately after its state becomes playing. Issue the pause request before
-  # the rest of the blueprint's policy calculations so the first words of a TTS
-  # or announcement are not consumed while the soundbar changes input/EQ. The
-  # normal routing block below still owns confirmation, source switching and
-  # resume; this early action only gets the pause request onto the controller
-  # sooner.
+  # immediately after its state becomes playing. If an affected soundbar is off,
+  # wake it immediately instead of waiting for the later routing block. If the bar
+  # is already on but needs another input, issue the pause request before the rest
+  # of the blueprint's policy calculations so the first words of TTS/announcements
+  # are not consumed while the soundbar changes input/EQ. The normal routing block
+  # below still owns source confirmation, switching and resume.
   - variables:
       trigger_id: "{{ trigger.id | default('') }}"
       trigger_entity: >-
@@ -979,6 +979,34 @@ actions:
         {% else %}
           {{ [] }}
         {% endif %}
+  - variables:
+      source_start_wake_bars: >-
+        {% set ns = namespace(bars=[]) %}
+        {% if source_start_trigger_active and source_start_requested_source != '' %}
+          {% set bars = [ultimea_players] if ultimea_players is string else ultimea_players %}
+          {% for candidate_bar in bars %}
+            {% set bar_area = area_id(candidate_bar) or '' %}
+            {% set affects_bar =
+                 (ultimea_players is string or ultimea_players | length == 1)
+                 or (source_start_trigger_area != '' and bar_area != ''
+                     and source_start_trigger_area == bar_area) %}
+            {% if affects_bar and is_state(candidate_bar, 'off') %}
+              {% set ns.bars = ns.bars + [candidate_bar] %}
+            {% endif %}
+          {% endfor %}
+        {% endif %}
+        {{ ns.bars }}
+  - if:
+      - condition: template
+        value_template: "{{ source_start_wake_bars | length > 0 }}"
+    then:
+      - repeat:
+          for_each: "{{ source_start_wake_bars }}"
+          sequence:
+            - action: media_player.turn_on
+              continue_on_error: true
+              target:
+                entity_id: "{{ repeat.item }}"
   - variables:
       source_start_handoff_needed: >-
         {% set ns = namespace(needed=false) %}
