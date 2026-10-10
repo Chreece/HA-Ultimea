@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.10.1
+
+### Added
+
+- Poseidon D70: source selectors for Bluetooth and USB in addition to ARC, Optical and AUX, using the exact reporter-confirmed `02:02` control values.
+- D70 mute/unmute (`02:0A 00/01`) and power off (`02:09 00`) from the hardware reporter's command samples. Power-on is deliberately unavailable when the device is off and cannot accept Bluetooth connections.
+- Explicit no-reply D70 power-off transmission after the normal authenticated BLE handshake. No waiting for an impossible shutdown ACK, and no false OFF state after a rejected GATT write.
+- Nine regression tests from the reporter-confirmed command payloads, preserving D80/A40 safety gating.
+
 ## 2026.10.10
 
 ### Added

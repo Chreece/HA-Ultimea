@@ -89,6 +89,8 @@ VERIFIED_D70_FEATURES = frozenset(
     {
         Feature.VOLUME,
         Feature.SOURCE,
+        Feature.MUTE,
+        Feature.POWER,
     }
 )
 
@@ -101,12 +103,14 @@ DEFAULT_SOURCE_NAMES: Mapping[Source, str] = {
     Source.USB: "USB",
 }
 
-# Reporter-provided D70 captures from issue #4 prove CONTROL 02:02 values
-# 00=ARC, 01=Optical and 03=AUX. Do not expose uncaptured source setters yet.
+# D70-specific CONTROL source enum, captured by the reporter in issue #4.
+# The follow-up confirms BT=02 and USB=04; ARC remains 00, not D80's 10.
 D70_SOURCE_CONTROL_VALUES: Mapping[Source, int] = {
     Source.EARC: 0x00,
     Source.OPTICAL: 0x01,
+    Source.BLUETOOTH: 0x02,
     Source.AUX: 0x03,
+    Source.USB: 0x04,
 }
 D70_SOURCE_NAMES: Mapping[Source, str] = {
     Source.EARC: "ARC",
@@ -185,12 +189,14 @@ D80_WIRE_FEATURES: Mapping[Feature, FeatureWireSpec] = {
 # Static Frontier-family evidence recovered from the official app. These are
 # deliberately NOT assigned to any product model yet. Most importantly,
 # Frontier 02:0F means single-LED brightness while D80 02:0F is destructive.
-# Reporter-proven Poseidon D70 writes. Reads are intentionally not claimed
-# until INFO captures are supplied; missed ACKs therefore fail safely rather
-# than verifying through an unproven GET path.
+# Reporter-confirmed Poseidon D70 writes from issue #4. The submitted
+# packet archive could not be independently downloaded; do not infer other
+# controls or INFO read mappings from the write samples.
 D70_WIRE_FEATURES: Mapping[Feature, FeatureWireSpec] = {
     Feature.VOLUME: FeatureWireSpec(write=_control(CMD_VOLUME)),
     Feature.SOURCE: FeatureWireSpec(write=_control(CMD_SOURCE)),
+    Feature.MUTE: FeatureWireSpec(write=_control(CMD_MUTE)),
+    Feature.POWER: FeatureWireSpec(write=_control(CMD_POWER)),
 }
 
 FRONTIER_STATIC_WIRE_FEATURES: Mapping[Feature, FeatureWireSpec] = {
@@ -217,6 +223,8 @@ class UltimeaModelProfile:
     source_control_values: Mapping[Source, int] = field(default_factory=dict)
     source_info_values: Mapping[int, Source] = field(default_factory=dict)
     source_names: Mapping[Source, str] = field(default_factory=dict)
+    power_on_supported: bool = True
+    power_off_expects_ack: bool = True
 
     def wire_spec(self, feature: Feature) -> FeatureWireSpec | None:
         """Return an explicitly proven wire mapping, never a numeric guess."""
@@ -281,9 +289,15 @@ D70_PROFILE = UltimeaModelProfile(
     verified_features=VERIFIED_D70_FEATURES,
     wire_features=D70_WIRE_FEATURES,
     source_control_values=D70_SOURCE_CONTROL_VALUES,
-    # D70 INFO-source values have not yet been captured. The generic common
-    # INFO decoder remains available for read-only state observations.
+    # D70 INFO-source values have not yet been independently validated;
+    # retain generic common INFO decoding.
     source_names=D70_SOURCE_NAMES,
+    # Hardware stops accepting BLE connections while powered off, so a
+    # Bluetooth TURN_ON action would never reach the soundbar.
+    power_on_supported=False,
+    # Power-off disconnects before an ACK; successful GATT transmission is
+    # the only immediate acknowledgement we can safely expect.
+    power_off_expects_ack=False,
 )
 APK_COMMON_PROFILE = UltimeaModelProfile(
     key="apk_common", verified=False, apk_embedded=True
@@ -357,6 +371,17 @@ def can_write_feature(
         return False
     spec = profile_for_model(model).wire_spec(feature)
     return spec is not None and spec.write is not None
+
+
+def can_turn_on(
+    model: str | None,
+    supported_features: Iterable[Feature],
+) -> bool:
+    """Allow power-on only when the soundbar stays BLE reachable while off."""
+    return (
+        profile_for_model(model).power_on_supported
+        and can_write_feature(model, Feature.POWER, supported_features)
+    )
 
 
 def writable_features_for_model(

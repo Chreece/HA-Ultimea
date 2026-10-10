@@ -21,6 +21,7 @@ from .device import UltimeaError
 from .entity import UltimeaEntity
 from .eq_style import identify_style_preset
 from .profiles import (
+    can_turn_on,
     can_write_feature,
     source_for_name_for_model,
     source_name_for_model,
@@ -143,7 +144,9 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
     def supported_features(self) -> MediaPlayerEntityFeature:
         features = MediaPlayerEntityFeature(0)
         if self._can_write(Feature.POWER):
-            features |= MediaPlayerEntityFeature.TURN_ON | MediaPlayerEntityFeature.TURN_OFF
+            features |= MediaPlayerEntityFeature.TURN_OFF
+        if can_turn_on(self.device.identity.model, self.device.capabilities.features):
+            features |= MediaPlayerEntityFeature.TURN_ON
         if self._can_write(Feature.VOLUME):
             features |= MediaPlayerEntityFeature.VOLUME_SET | MediaPlayerEntityFeature.VOLUME_STEP
         if self._can_write(Feature.MUTE):

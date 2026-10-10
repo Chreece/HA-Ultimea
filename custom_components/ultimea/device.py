@@ -64,7 +64,7 @@ from .const import (
     Source,
 )
 from .models import UltimeaCapabilities, UltimeaIdentity, UltimeaState
-from .profiles import can_write_feature, decode_source_value, profile_for_model, source_value_for_model
+from .profiles import can_turn_on, can_write_feature, decode_source_value, profile_for_model, source_value_for_model
 from .protocol import UltimeaFrame, build_command, decode_ascii, iter_frames
 
 _LOGGER = logging.getLogger(__name__)
@@ -664,11 +664,26 @@ class UltimeaDevice:
         *,
         expected_data: bytes | None,
         timeout: float = 2.0,
-    ) -> UltimeaFrame:
+        wait_for_reply: bool = True,
+    ) -> UltimeaFrame | None:
         client = await self.async_ensure_connected()
         if self._write_uuid is None:
             raise UltimeaConnectionError("No active ULTIMEA write characteristic")
         packet = build_command(group, command, data)
+
+        if not wait_for_reply:
+            # Used only for profile-proven one-way operations (D70 power-off).
+            # Do not claim success if establishing BLE or the GATT write fails.
+            # No pending reply future is created because the bar switches off.
+            async with self._command_lock:
+                try:
+                    await client.write_gatt_char(self._write_uuid, packet, response=False)
+                except Exception as err:
+                    if isinstance(err, UltimeaError):
+                        raise
+                    raise UltimeaCommandError(str(err)) from err
+            self._schedule_disconnect()
+            return None
 
         async with self._command_lock:
             loop = asyncio.get_running_loop()
@@ -699,6 +714,8 @@ class UltimeaDevice:
         frame = await self._async_request(
             group, command, expected_data=None, timeout=timeout
         )
+        if frame is None:
+            raise UltimeaCommandError("State query completed without a reply")
         return frame.data
 
     async def _async_try_query(self, command: int, *, timeout: float = 1.2) -> bytes | None:
@@ -923,7 +940,21 @@ class UltimeaDevice:
             raise UltimeaCommandError(
                 "power write is not verified for this ULTIMEA model"
             )
+        if enabled and not can_turn_on(self.identity.model, self.capabilities.features):
+            raise UltimeaCommandError(
+                "Bluetooth power-on is not supported by this ULTIMEA model"
+            )
         data = bytes([1 if enabled else 0])
+        if not enabled and not profile_for_model(self.identity.model).power_off_expects_ack:
+            await self._async_request(
+                GROUP_CONTROL, CMD_POWER, data,
+                expected_data=None, wait_for_reply=False,
+            )
+            # Optimistic only after the GATT write was accepted. The D70
+            # powers down and cannot send a reliable control response.
+            self.state.power = False
+            self._async_notify_listeners()
+            return
         try:
             await self._async_write_verified(
                 CMD_POWER,
