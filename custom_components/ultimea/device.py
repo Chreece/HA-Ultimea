@@ -916,6 +916,13 @@ class UltimeaDevice:
         )
 
     async def async_set_power(self, enabled: bool) -> None:
+        # The disconnected power-off fallback below is valid only when this
+        # model has a proven power SET command. Without this early guard an
+        # A40 could appear powered off even though nothing was transmitted.
+        if not can_write_feature(self.identity.model, Feature.POWER, self.capabilities.features):
+            raise UltimeaCommandError(
+                "power write is not verified for this ULTIMEA model"
+            )
         data = bytes([1 if enabled else 0])
         try:
             await self._async_write_verified(
