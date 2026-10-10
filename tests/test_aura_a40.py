@@ -158,3 +158,59 @@ def test_a40_observed_sensor_values_match_reporter_diagnostic():
     device.state.sound_mode = None
     assert source_sensor.native_value is None
     assert mode.native_value is None
+
+def test_a40_direct_write_bypasses_are_rejected_at_device_layer():
+    """Even calling the underlying write method directly must not touch BLE."""
+    import ast
+    import asyncio
+    import copy
+    from types import SimpleNamespace
+    from typing import Any, Awaitable, Callable
+
+    import pytest
+
+    device_path = INTEGRATION / "device.py"
+    source = device_path.read_text(encoding="utf-8")
+    cls = next(
+        item for item in ast.parse(source).body
+        if isinstance(item, ast.ClassDef) and item.name == "UltimeaDevice"
+    )
+    method = next(
+        item for item in cls.body
+        if isinstance(item, ast.AsyncFunctionDef)
+        and item.name == "_async_write_verified"
+    )
+    isolated = copy.deepcopy(cls)
+    isolated.body = [method]
+    error_type = type("UltimeaCommandError", (Exception,), {})
+    scope = {
+        "Feature": const.Feature,
+        "Any": Any,
+        "Awaitable": Awaitable,
+        "Callable": Callable,
+        "UltimeaCommandError": error_type,
+        "can_write_feature": profiles.can_write_feature,
+    }
+    exec(compile(ast.Module(body=[isolated], type_ignores=[]), str(device_path), "exec"), scope)
+    probe = scope["UltimeaDevice"]()
+    probe.identity = SimpleNamespace(model="Aura A40")
+    probe.capabilities = SimpleNamespace(features={const.Feature.POWER})
+    probe.supports = lambda feature: feature in probe.capabilities.features
+    touched_ble = []
+
+    async def record_request(*args, **kwargs):
+        touched_ble.append((args, kwargs))
+        return None
+
+    probe._async_request = record_request
+    with pytest.raises(error_type, match="not verified"):
+        asyncio.run(
+            probe._async_write_verified(
+                0x09,
+                b"\x01",
+                feature=const.Feature.POWER,
+                refresh=None,
+                is_expected=lambda: False,
+            )
+        )
+    assert touched_ble == []

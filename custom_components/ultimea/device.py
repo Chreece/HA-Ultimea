@@ -64,7 +64,7 @@ from .const import (
     Source,
 )
 from .models import UltimeaCapabilities, UltimeaIdentity, UltimeaState
-from .profiles import decode_source_value, profile_for_model, source_value_for_model
+from .profiles import can_write_feature, decode_source_value, profile_for_model, source_value_for_model
 from .protocol import UltimeaFrame, build_command, decode_ascii, iter_frames
 
 _LOGGER = logging.getLogger(__name__)
@@ -862,6 +862,13 @@ class UltimeaDevice:
         if not self.supports(feature):
             raise UltimeaCommandError(
                 f"{feature.value.replace('_', ' ')} is not reported as supported by this ULTIMEA device"
+            )
+        # This guard must live at the write dispatcher, not only in HA entity
+        # feature flags. A direct HA service/automated call can otherwise use
+        # read-capable but unverified controls on e.g. the Aura A40.
+        if not can_write_feature(self.identity.model, feature, self.capabilities.features):
+            raise UltimeaCommandError(
+                f"{feature.value.replace('_', ' ')} write is not verified for this ULTIMEA model"
             )
         try:
             await self._async_request(
