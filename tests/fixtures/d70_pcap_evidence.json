@@ -1,0 +1,111 @@
+{
+  "origin": "Sanitized protocol facts extracted from user-uploaded ultimad70_anon.zip (PCAPNG); no BLE addresses or serial",
+  "capture_packets": 249,
+  "protocol_frames": 139,
+  "model": "Poseidon D70",
+  "firmware": "V50",
+  "protocol_version": 1,
+  "info_source_arc": "bb0100010600b1",
+  "capabilities_flags": [
+    0,
+    1,
+    0,
+    0,
+    1,
+    0,
+    1,
+    1,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    1,
+    0
+  ],
+  "capabilities_summary": {
+    "has_arc": true,
+    "has_hdmi": false,
+    "has_bluetooth": true,
+    "has_aux": true,
+    "has_usb": true,
+    "has_display_screen": true
+  },
+  "transactions": {
+    "source_arc": {
+      "tx": "aa0100020200ae",
+      "rx": "bb0100020200ae",
+      "tx_packet": 186,
+      "rx_packet": 187
+    },
+    "source_optical": {
+      "tx": "aa0100020201af",
+      "rx": "bb0100020201af",
+      "tx_packet": 179,
+      "rx_packet": 180
+    },
+    "source_bluetooth": {
+      "tx": "aa0100020202b0",
+      "rx": "bb0100020202b0",
+      "tx_packet": 181,
+      "rx_packet": 182
+    },
+    "source_aux": {
+      "tx": "aa0100020203b1",
+      "rx": "bb0100020203b1",
+      "tx_packet": 183,
+      "rx_packet": 185
+    },
+    "source_usb": {
+      "tx": "aa0100020204b2",
+      "rx": "bb0100020204b2",
+      "tx_packet": 188,
+      "rx_packet": 189
+    },
+    "mute_on": {
+      "tx": "aa0100020a00b6",
+      "rx": "bb0100020a00b6",
+      "tx_packet": 167,
+      "rx_packet": 168
+    },
+    "mute_off": {
+      "tx": "aa0100020a01b7",
+      "rx": "bb0100020a01b7",
+      "tx_packet": 170,
+      "rx_packet": 171
+    },
+    "power_off": {
+      "tx": "aa0100020900b5",
+      "rx": "bb0100020900b5",
+      "tx_packet": 248,
+      "rx_packet": 249,
+      "ack_delay_ms": 149.769
+    },
+    "volume_100": {
+      "tx": "aa010002036413",
+      "rx": "bb010002036413",
+      "tx_packet": 173,
+      "rx_packet": 174
+    },
+    "volume_0": {
+      "tx": "aa0100020300af",
+      "rx": "bb0100020300af",
+      "tx_packet": 175,
+      "rx_packet": 176
+    },
+    "volume_9": {
+      "tx": "aa0100020309b8",
+      "rx": "bb0100020309b8",
+      "tx_packet": 177,
+      "rx_packet": 178
+    }
+  },
+  "post_usb_source_push": "bb0100020200ae",
+  "notes": [
+    "Power off 02:09 00 is acknowledged by BB 01 00 02 09 00 B5 about 149.769 ms later.",
+    "A subsequent unsolicited ARC source push follows the USB source acknowledgement.",
+    "Bluetooth power-on was not captured and remains unsupported."
+  ]
+}

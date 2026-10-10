@@ -1,5 +1,5 @@
 {
-  "evidence": "Issue #4 reporter comment 6096311071; sample commands quoted in issue; PCAP archive not independently inspected",
+  "evidence": "D70 issue #4 reporter; command values independently confirmed in the in-chat ultimad70_anon.zip PCAPNG; see d70_pcap_evidence.json",
   "model": "Poseidon D70",
   "source_frames": {
     "earc": "aa0100020200ae",

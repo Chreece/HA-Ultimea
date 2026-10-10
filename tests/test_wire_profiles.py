@@ -54,7 +54,8 @@ def test_d70_profile_is_evidence_limited():
     assert "Feature.POWER: FeatureWireSpec(write=_control(CMD_POWER))" in profiles
     assert "Feature.MUTE: FeatureWireSpec(write=_control(CMD_MUTE))" in profiles
     assert "power_on_supported=False" in profiles
-    assert "power_off_expects_ack=False" in profiles
+    assert "power_off_disconnect_fallback=False" in profiles
+    assert "source_info_values=D70_INFO_SOURCE_VALUES" in profiles
 
 
 def test_source_values_and_labels_are_profile_specific():

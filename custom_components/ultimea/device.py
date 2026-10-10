@@ -664,26 +664,11 @@ class UltimeaDevice:
         *,
         expected_data: bytes | None,
         timeout: float = 2.0,
-        wait_for_reply: bool = True,
-    ) -> UltimeaFrame | None:
+    ) -> UltimeaFrame:
         client = await self.async_ensure_connected()
         if self._write_uuid is None:
             raise UltimeaConnectionError("No active ULTIMEA write characteristic")
         packet = build_command(group, command, data)
-
-        if not wait_for_reply:
-            # Used only for profile-proven one-way operations (D70 power-off).
-            # Do not claim success if establishing BLE or the GATT write fails.
-            # No pending reply future is created because the bar switches off.
-            async with self._command_lock:
-                try:
-                    await client.write_gatt_char(self._write_uuid, packet, response=False)
-                except Exception as err:
-                    if isinstance(err, UltimeaError):
-                        raise
-                    raise UltimeaCommandError(str(err)) from err
-            self._schedule_disconnect()
-            return None
 
         async with self._command_lock:
             loop = asyncio.get_running_loop()
@@ -714,8 +699,6 @@ class UltimeaDevice:
         frame = await self._async_request(
             group, command, expected_data=None, timeout=timeout
         )
-        if frame is None:
-            raise UltimeaCommandError("State query completed without a reply")
         return frame.data
 
     async def _async_try_query(self, command: int, *, timeout: float = 1.2) -> bytes | None:
@@ -944,32 +927,33 @@ class UltimeaDevice:
             raise UltimeaCommandError(
                 "Bluetooth power-on is not supported by this ULTIMEA model"
             )
+        profile = profile_for_model(self.identity.model)
         data = bytes([1 if enabled else 0])
-        if not enabled and not profile_for_model(self.identity.model).power_off_expects_ack:
-            await self._async_request(
-                GROUP_CONTROL, CMD_POWER, data,
-                expected_data=None, wait_for_reply=False,
-            )
-            # Optimistic only after the GATT write was accepted. The D70
-            # powers down and cannot send a reliable control response.
-            self.state.power = False
-            self._async_notify_listeners()
-            return
         try:
             await self._async_write_verified(
                 CMD_POWER,
                 data,
                 feature=Feature.POWER,
-                refresh=lambda: self.async_query(GROUP_INFO, INFO_POWER),
+                # D70 acknowledges the power-off write before it goes offline.
+                # Do not try a follow-up query after a missed D70 ACK.
+                refresh=(
+                    None
+                    if not enabled and not profile.power_off_disconnect_fallback
+                    else lambda: self.async_query(GROUP_INFO, INFO_POWER)
+                ),
                 is_expected=lambda: self.state.power is enabled,
                 timeout=3.0,
             )
         except UltimeaCommandError:
-            if not enabled and not self.connected:
+            if not enabled and not self.connected and profile.power_off_disconnect_fallback:
                 self.state.power = False
                 self._async_notify_listeners()
                 return
             raise
+        if not enabled and not profile.power_off_disconnect_fallback:
+            # This executes only after matching CONTROL 02:09:00 ACK.
+            self.state.power = False
+            self._async_notify_listeners()
         if enabled:
             self.state.power = True
             self._async_notify_listeners()

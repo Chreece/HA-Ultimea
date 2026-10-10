@@ -134,22 +134,49 @@ aa 01 00 02 0a 01 b7   Mute off
 aa 01 00 02 09 00 b5   Power off
 ```
 
-The expanded commands are corroborated by the reporter's textual follow-up
-in [issue #4](https://github.com/Chreece/HA-Ultimea/issues/4). The linked
-anonymized PCAP ZIP could not be downloaded and has **not** been inspected;
-the complete `AA` frames above were calculated from the reported command
-bytes using the already verified protocol checksum.
+### Independently verified PCAP: `ultimad70_anon.zip`
 
-**No Bluetooth power on**: the D70 is unreachable while off. Home Assistant
-advertises only `TURN_OFF`, never `TURN_ON`; even direct calls to
-`async_set_power(True)` fail before any Bluetooth I/O. D70 power-off
-writes `02:09:00` after the safe-code handshake and does not await the
-reply that shutdown prevents. Success after GATT write is optimistic.
-If connection or GATT write fails, the off state must not be fabricated.
+The reporter also attached the ZIP directly in the conversation. The
+PCAPNG was decoded locally, yielding **249 BLE packets, 139 valid AA/BB
+ULTIMEA frames**, with the following direct evidence:
 
-No D70 INFO-source capture has been verified independently, so the common
-INFO source decoder remains a read-only fallback. D70 sound mode/EQ,
-X-Upmix, standby and all other unconfirmed setters remain disabled.
+- `INFO 01:02` returns `Poseidon D70`.
+- `INFO 01:05` replies `32 00` = **firmware V50**.
+- `INFO 01:06` replies `00` = **ARC**. The D70's 17-byte
+  `fetchAbilities` prefix confirms ARC, Bluetooth, AUX and USB,
+  **no HDMI**; its INFO decoder is limited to those inputs.
+- The app's `02:02` setters `00/01/02/03/04` all have matching
+  `BB` control replies (ARC / Optical / Bluetooth / AUX / USB).
+  An additional ARC push follows the USB reply.
+- Mute `02:0A:00/01` and volume values `00/09/64` have
+  matching `BB` replies.
+- **Power off also has a matching ACK:**
+
+```text
+Packet 248 TX: aa 01 00 02 09 00 b5
+Packet 249 RX: bb 01 00 02 09 00 b5
+Elapsed TX to RX: 149.769 ms
+```
+
+This corrects the original mistaken assumption that D70 shutdown did
+not acknowledge. The release `2026.10.10.1` used an optimistic,
+one-way BLE write for this command; the fixed implementation awaits
+`02:09:00` and marks the soundbar off **only after the matching ACK**.
+If the GATT write fails, the expected reply never arrives or BLE
+disconnects first, the error is propagated and the D70 is not falsely
+marked off. Unlike D70, the separate D80 legacy disconnect policy
+is preserved.
+
+**No Bluetooth power on:** the hardware becomes unresponsive after
+shutdown. Home Assistant offers `TURN_OFF` but not `TURN_ON`, and
+direct power-on calls are rejected before Bluetooth I/O.
+
+The capture also includes a 41-byte `INFO 01:08` response and
+undocumented INFO requests; they are **not** evidence for safe D70
+sound-mode, EQ, X-Upmix, standby or other writes, so those remain
+disabled. The public test fixture `tests/fixtures/d70_pcap_evidence.json`
+contains only the extracted protocol facts, without serial or addresses.
+See [issue #4](https://github.com/Chreece/HA-Ultimea/issues/4).
 
 ## Aura A40 V56 read-only evidence (issue #5)
 

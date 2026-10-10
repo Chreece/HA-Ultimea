@@ -224,7 +224,6 @@ class UltimeaDevice(BaseUltimeaDevice):
         *,
         expected_data: bytes | None,
         timeout: float = 2.0,
-        wait_for_reply: bool = True,
     ):
         bootstrap_query = group == GROUP_INFO and command in (INFO_PROTOCOL, INFO_MODEL)
         safe_code_command = group == GROUP_CAPABILITIES and command == SAFE_CODE_COMMAND
@@ -233,7 +232,7 @@ class UltimeaDevice(BaseUltimeaDevice):
             await self._async_safe_code_handshake()
         frame = await super()._async_request(
             group, command, data, expected_data=expected_data,
-            timeout=timeout, wait_for_reply=wait_for_reply,
+            timeout=timeout,
         )
         if group == GROUP_INFO and command == INFO_PROTOCOL:
             self._safe_code_protocol_checked = True

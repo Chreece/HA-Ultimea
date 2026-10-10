@@ -118,6 +118,17 @@ D70_SOURCE_NAMES: Mapping[Source, str] = {
     Source.AUX: "AUX",
 }
 
+# The PCAP confirms INFO source 00=ARC and that D70 has no HDMI.
+# Remaining labels follow the app's common INFO enum for the supported
+# input family; no HDMI value is accepted by this model.
+D70_INFO_SOURCE_VALUES: Mapping[int, Source] = {
+    0x00: Source.EARC,
+    0x01: Source.OPTICAL,
+    0x02: Source.BLUETOOTH,
+    0x03: Source.AUX,
+    0x04: Source.USB,
+}
+
 # Aura A40 V56: INFO source 01 = Optical was observed in issue #5.
 # Other values follow the app-derived common INFO enum; their physical inputs
 # are corroborated by the A40 ability flags and manufacturer documentation.
@@ -224,7 +235,9 @@ class UltimeaModelProfile:
     source_info_values: Mapping[int, Source] = field(default_factory=dict)
     source_names: Mapping[Source, str] = field(default_factory=dict)
     power_on_supported: bool = True
-    power_off_expects_ack: bool = True
+    # Preserve D80's legacy disconnect fallback. D70's captured ACK is
+    # authoritative and must not be replaced by a guessed OFF state.
+    power_off_disconnect_fallback: bool = True
 
     def wire_spec(self, feature: Feature) -> FeatureWireSpec | None:
         """Return an explicitly proven wire mapping, never a numeric guess."""
@@ -289,15 +302,14 @@ D70_PROFILE = UltimeaModelProfile(
     verified_features=VERIFIED_D70_FEATURES,
     wire_features=D70_WIRE_FEATURES,
     source_control_values=D70_SOURCE_CONTROL_VALUES,
-    # D70 INFO-source values have not yet been independently validated;
-    # retain generic common INFO decoding.
+    # INFO 01:06 = 00 (ARC) is confirmed in the actual PCAP.
+    source_info_values=D70_INFO_SOURCE_VALUES,
     source_names=D70_SOURCE_NAMES,
-    # Hardware stops accepting BLE connections while powered off, so a
-    # Bluetooth TURN_ON action would never reach the soundbar.
+    # The soundbar cannot receive Bluetooth power-on after shutdown.
     power_on_supported=False,
-    # Power-off disconnects before an ACK; successful GATT transmission is
-    # the only immediate acknowledgement we can safely expect.
-    power_off_expects_ack=False,
+    # Actual PCAP packet 249 acknowledges 02:09:00, so any missing ACK,
+    # rejected GATT write or premature disconnect must remain an error.
+    power_off_disconnect_fallback=False,
 )
 APK_COMMON_PROFILE = UltimeaModelProfile(
     key="apk_common", verified=False, apk_embedded=True
