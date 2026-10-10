@@ -103,3 +103,58 @@ def test_runtime_diagnostics_and_sensor_guards_present():
         assert key in sensor
     assert "writable_features_for_model" in sensor
     assert '"writable_features"' in diagnostics
+
+def test_a40_observed_sensor_values_match_reporter_diagnostic():
+    """Execute the actual sensor class with lightweight entity stubs, no HA I/O."""
+    import ast
+    from types import SimpleNamespace
+
+    source = (INTEGRATION / "sensor.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    cls = next(
+        item for item in tree.body
+        if isinstance(item, ast.ClassDef)
+        and item.name == "UltimeaObservedStateSensor"
+    )
+
+    class EntityBase:
+        def __init__(self, device):
+            self.device = device
+
+    class SensorBase:
+        pass
+
+    scope = {
+        "UltimeaEntity": EntityBase,
+        "SensorEntity": SensorBase,
+        "Feature": const.Feature,
+        "SoundMode": const.SoundMode,
+        "source_name_for_model": profiles.source_name_for_model,
+    }
+    exec(compile(ast.Module(body=[cls], type_ignores=[]), str(INTEGRATION / "sensor.py"), "exec"), scope)
+    Sensor = scope["UltimeaObservedStateSensor"]
+    state = EVIDENCE["observed_state"]
+    device = SimpleNamespace(
+        address="redacted",
+        identity=SimpleNamespace(model="Aura A40", serial=None),
+        state=SimpleNamespace(
+            raw_volume=state["raw_volume"],
+            source=const.Source(state["source"]),
+            sound_mode=const.SoundMode(state["sound_mode"]),
+        ),
+    )
+
+    volume = Sensor(device, const.Feature.VOLUME)
+    source_sensor = Sensor(device, const.Feature.SOURCE)
+    mode = Sensor(device, const.Feature.SOUND_MODE)
+    assert volume.native_value == 13
+    assert volume._attr_native_unit_of_measurement == "%"
+    assert source_sensor.native_value == "Optical"
+    assert mode.native_value == "Music"
+    assert all("observed_" in x._attr_unique_id for x in (volume, source_sensor, mode))
+
+    # Unknown values must never be displayed as stale known sources or modes.
+    device.state.source = None
+    device.state.sound_mode = None
+    assert source_sensor.native_value is None
+    assert mode.native_value is None
