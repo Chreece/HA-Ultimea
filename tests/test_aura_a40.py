@@ -214,3 +214,47 @@ def test_a40_direct_write_bypasses_are_rejected_at_device_layer():
             )
         )
     assert touched_ble == []
+
+
+def test_a40_disconnected_power_off_never_fakes_state():
+    """Blocked power-off cannot masquerade as success while disconnected."""
+    import ast
+    import asyncio
+    import copy
+    from types import SimpleNamespace
+
+    device_path = INTEGRATION / "device.py"
+    cls = next(
+        node for node in ast.parse(device_path.read_text(encoding="utf-8")).body
+        if isinstance(node, ast.ClassDef) and node.name == "UltimeaDevice"
+    )
+    power_method = next(
+        node for node in cls.body
+        if isinstance(node, ast.AsyncFunctionDef) and node.name == "async_set_power"
+    )
+    isolated = copy.deepcopy(cls)
+    isolated.body = [power_method]
+    error_type = type("UltimeaCommandError", (Exception,), {})
+    scope = {
+        "Feature": const.Feature,
+        "can_write_feature": profiles.can_write_feature,
+        "UltimeaCommandError": error_type,
+    }
+    exec(compile(ast.Module(body=[isolated], type_ignores=[]), str(device_path), "exec"), scope)
+    device = scope["UltimeaDevice"]()
+    device.identity = SimpleNamespace(model="Aura A40")
+    device.capabilities = SimpleNamespace(features={const.Feature.POWER})
+    device.state = SimpleNamespace(power=True)
+    device.connected = False
+
+    async def should_not_send(*args, **kwargs):
+        raise AssertionError("Forbidden A40 power command was sent")
+
+    device._async_write_verified = should_not_send
+    try:
+        asyncio.run(device.async_set_power(False))
+    except error_type as exc:
+        assert "not verified" in str(exc)
+    else:
+        raise AssertionError("A40 power-off incorrectly succeeded")
+    assert device.state.power is True
