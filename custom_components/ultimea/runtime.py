@@ -27,7 +27,6 @@ from .const import (
     INFO_SCREEN_TIMEOUT,
     INFO_SOUND_MODE,
     INFO_SOURCE,
-    INFO_VALUE_TO_SOURCE,
     INFO_VOLUME,
     INFO_XUPMIX,
     VALUE_TO_SOUND_MODE,
@@ -35,7 +34,7 @@ from .const import (
     SoundMode,
 )
 from .device import UltimeaCommandError, UltimeaDevice as BaseUltimeaDevice, UltimeaError
-from .profiles import profile_for_model
+from .profiles import decode_source_value, profile_for_model
 from .eq_style import build_style_payload, parse_d80_profile
 from .protocol import (
     EQ_CUSTOM_PROFILE,
@@ -304,7 +303,7 @@ class UltimeaDevice(BaseUltimeaDevice):
             return True
         if frame.command == INFO_SOURCE and len(data) == 1:
             self.state.raw_source = data[0]
-            self.state.source = INFO_VALUE_TO_SOURCE.get(data[0])
+            self.state.source = decode_source_value(self.identity.model, data[0], info=True)
             return True
         if frame.command == INFO_SOUND_MODE and len(data) == 1:
             self._apply_sound_mode(data[0])

@@ -13,6 +13,7 @@ from .const import ABILITY_FIELD_NAMES, ABILITY_INTEGER_FIELDS, Feature, SoundMo
 from .entity import UltimeaEntity
 from .eq_style import identify_style_preset
 from .protocol import EQ_FREQUENCIES_HZ, EQ_STYLE_PROFILE
+from .profiles import profile_for_model, source_name_for_model, writable_features_for_model
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback) -> None:
@@ -20,6 +21,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     entities: list[SensorEntity] = [UltimeaCapabilitiesSensor(runtime.device)]
     if runtime.device.supports(Feature.STYLE):
         entities.extend(UltimeaStyleBand(runtime.device, i, hz) for i, hz in enumerate(EQ_FREQUENCIES_HZ))
+    # Give A40 owners normal, visible status sensors instead of fake controls.
+    if profile_for_model(runtime.device.identity.model).key == "aura_a40":
+        entities.extend(
+            UltimeaObservedStateSensor(runtime.device, feature)
+            for feature in (Feature.VOLUME, Feature.SOURCE, Feature.SOUND_MODE)
+            if runtime.device.supports(feature)
+        )
     async_add_entities(entities)
 
 
@@ -42,6 +50,14 @@ class UltimeaCapabilitiesSensor(UltimeaEntity, SensorEntity):
         attrs: dict[str, object] = {
             "raw_ability_flags": list(raw),
             "safe_features": sorted(x.value for x in self.device.capabilities.features),
+            "readable_features": sorted(x.value for x in self.device.capabilities.features),
+            "writable_features": sorted(
+                x.value
+                for x in writable_features_for_model(
+                    self.device.identity.model, self.device.capabilities.features
+                )
+            ),
+            "model_profile": profile_for_model(self.device.identity.model).key,
         }
         for index, value in enumerate(raw):
             if index >= len(ABILITY_FIELD_NAMES):
@@ -53,6 +69,42 @@ class UltimeaCapabilitiesSensor(UltimeaEntity, SensorEntity):
         if self.device.transport:
             attrs["ble_transport"] = self.device.transport
         return attrs
+
+
+class UltimeaObservedStateSensor(UltimeaEntity, SensorEntity):
+    """Visible read-only Aura A40 states; never sends any SET commands."""
+
+    _OBSERVED = {
+        Feature.VOLUME: ("observed_volume", "mdi:volume-high"),
+        Feature.SOURCE: ("observed_source", "mdi:audio-input-stereo-minijack"),
+        Feature.SOUND_MODE: ("observed_sound_mode", "mdi:equalizer"),
+    }
+
+    def __init__(self, device, feature: Feature) -> None:
+        super().__init__(device)
+        self._feature = feature
+        self._attr_translation_key, self._attr_icon = self._OBSERVED[feature]
+        self._attr_unique_id = (
+            f"{device.identity.serial or device.address}_observed_{feature.value}"
+        )
+        if feature is Feature.VOLUME:
+            # Firmware V56 has the documented 100-level volume system.
+            self._attr_native_unit_of_measurement = "%"
+
+    @property
+    def native_value(self) -> int | str | None:
+        if self._feature is Feature.VOLUME:
+            return self.device.state.raw_volume
+        if self._feature is Feature.SOURCE:
+            source = self.device.state.source
+            return (
+                source_name_for_model(self.device.identity.model, source)
+                if source is not None else None
+            )
+        mode = self.device.state.sound_mode
+        if mode is SoundMode.CUSTOM:
+            return "Custom EQ"
+        return mode.value.replace("_", " ").title() if mode is not None else None
 
 
 class UltimeaStyleBand(UltimeaEntity, SensorEntity):

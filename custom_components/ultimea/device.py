@@ -64,7 +64,7 @@ from .const import (
     Source,
 )
 from .models import UltimeaCapabilities, UltimeaIdentity, UltimeaState
-from .profiles import decode_source_value, profile_for_model, source_value_for_model
+from .profiles import can_write_feature, decode_source_value, profile_for_model, source_value_for_model
 from .protocol import UltimeaFrame, build_command, decode_ascii, iter_frames
 
 _LOGGER = logging.getLogger(__name__)
@@ -863,6 +863,13 @@ class UltimeaDevice:
             raise UltimeaCommandError(
                 f"{feature.value.replace('_', ' ')} is not reported as supported by this ULTIMEA device"
             )
+        # This guard must live at the write dispatcher, not only in HA entity
+        # feature flags. A direct HA service/automated call can otherwise use
+        # read-capable but unverified controls on e.g. the Aura A40.
+        if not can_write_feature(self.identity.model, feature, self.capabilities.features):
+            raise UltimeaCommandError(
+                f"{feature.value.replace('_', ' ')} write is not verified for this ULTIMEA model"
+            )
         try:
             await self._async_request(
                 GROUP_CONTROL,
@@ -909,6 +916,13 @@ class UltimeaDevice:
         )
 
     async def async_set_power(self, enabled: bool) -> None:
+        # The disconnected power-off fallback below is valid only when this
+        # model has a proven power SET command. Without this early guard an
+        # A40 could appear powered off even though nothing was transmitted.
+        if not can_write_feature(self.identity.model, Feature.POWER, self.capabilities.features):
+            raise UltimeaCommandError(
+                "power write is not verified for this ULTIMEA model"
+            )
         data = bytes([1 if enabled else 0])
         try:
             await self._async_write_verified(

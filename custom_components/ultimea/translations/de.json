@@ -44,7 +44,7 @@
     },
     "number": {"equalizer_band": {"name": "EQ {frequency}"}},
     "switch": {"xupmix": {"name": "X-Upmix"}},
-    "sensor": {"capabilities": {"name": "Funktionen"}, "style_band": {"name": "Klangstil {frequency}"}},
+    "sensor": {"capabilities": {"name": "Funktionen"}, "style_band": {"name": "Klangstil {frequency}"}, "observed_volume": {"name": "Lautstärke (nur lesen)"}, "observed_source": {"name": "Eingang (nur lesen)"}, "observed_sound_mode": {"name": "Klangmodus (nur lesen)"}},
     "button": {"style_reset": {"name": "Klangstil zurücksetzen"}, "style_bass": {"name": "Klangstil Bass"}, "style_rock": {"name": "Klangstil Rock"}, "style_pop": {"name": "Klangstil Pop"}, "style_classical": {"name": "Klangstil Klassik"}}
   }
 }

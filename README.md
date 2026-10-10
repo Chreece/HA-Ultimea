@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.10.02.3-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.10.10-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -32,9 +32,20 @@
 | --- | --- |
 | ULTIMEA Poseidon D80 Boom (U2623) | ✅ Hardware verified |
 | ULTIMEA Poseidon D70 | 🧪 Partial, capture-backed: volume + ARC/Optical/AUX source writes |
+| ULTIMEA Aura A40 (V56) | 🧪 Confirmed BLE discovery and read-only state; no verified write controls |
 | Other ULTIMEA devices that pass the APK common/custom protocol probe | 🧪 Experimental, capability-driven/read-only writes unless proven |
 
 The integration is not a D80 model-name allow-list. It discovers likely ULTIMEA advertisements, selects the app protocol transport, asks the device for its model/protocol information, fetches the raw capability block when available, and probes safe read-only states. Writable controls are profile-gated and are exposed only when the exact model has a proven wire mapping. The D70 profile currently exposes only the reporter-captured volume and ARC/Optical/AUX setters; uncaptured controls remain disabled.
+
+## Aura A40 V56 read-only support
+
+The [reporter's diagnostic](https://github.com/Chreece/HA-Ultimea/issues/5) confirms the Aura A40, common `8D11/8D22` Bluetooth transport, protocol v1, firmware V56, a working heartbeat and eight responsive state reads. The observed state is power on, volume 13, Optical (`INFO 01:06=01`) and Music (`INFO 01:08=02`).
+
+ULTIMEA confirms the A40 has **Optical, Bluetooth, AUX and USB**, with **no HDMI/ARC**. The model-specific source decoder restricts INFO readback to these four sources. Optical (`01`) was seen in the diagnostic; the other INFO values are app-derived, supported by the capability bits and the physical input list. Unknown codes are never misrepresented as HDMI/ARC.
+
+Home Assistant exposes three ordinary, visible **read-only sensors** for **Volume, Input and Sound mode**, plus the existing media-player state. Sensor values come from actual device read responses and notifications (reload/reconnect refreshes state).
+
+**A40 write commands are not proven by this diagnostic.** No D80/D70 setters are inherited, so all A40 control buttons remain intentionally disabled. No further technical testing is required from the reporter for this safe, read-only implementation.
 
 ## Poseidon D70 partial support
 

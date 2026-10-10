@@ -128,6 +128,22 @@ No D70 INFO-source capture has been supplied yet. Generic INFO decoding remains
 read-only, while source/volume writes are gated by the D70 profile. Bluetooth,
 USB, power, mute, sound-mode/EQ and advanced setters remain disabled until captured.
 
+## Aura A40 V56 read-only evidence (issue #5)
+
+A reporter's diagnostic confirms model `Aura A40`, firmware `V56`, protocol v1, common `8D11/8D22` transport, a valid heartbeat and state GET replies for power, mute, volume, source, sound mode, brightness, screen timeout and prompt sound. Its captured state was on, volume 13, Optical (INFO `01:06=01`) and Music (INFO `01:08=02`).
+
+The 18-byte `fetchAbilities` payload was:
+
+```text
+00 01 01 00 00 00 01 01 01 00 00 00 01 00 00 01 01 00
+```
+
+The A40 has Optical, Bluetooth, AUX and USB inputs, with **no HDMI/ARC**. INFO source code `01` Optical is directly observed; `02` Bluetooth, `03` AUX and `04` USB are app-derived values consistent with the reported abilities and the published inputs. The A40 decoder does not fall back to generic HDMI/ARC codes. Firmware V56 is documented as improving 100-step volume control.
+
+**No CONTROL/SET frame was supplied for the A40.** Therefore `aura_a40` is a read-only profile with zero verified writable features; model-specific D80/D70 SET payloads must not be inherited. A40 exposes read-only status sensors without making any unproven Bluetooth writes.
+
+Sources: [issue #5](https://github.com/Chreece/HA-Ultimea/issues/5), [ULTIMEA A40 connections](https://support.ultimea.com/hc/en-us/articles/38299427461273-Multiple-Connection-Methods-for-the-Aura-A40-Soundbar), [ULTIMEA V56 update](https://support.ultimea.com/hc/en-us/articles/41571846052249-Aura-A40-APP-OTA-Upgrade-V56).
+
 ## Custom EQ and Custom Style
 
 `02:04` is overloaded for standard sound modes and the D80 custom sound profiles.
