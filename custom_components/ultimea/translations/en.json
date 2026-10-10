@@ -5,9 +5,7 @@
       "user": {
         "title": "Add ULTIMEA soundbar",
         "description": "Select a discovered ULTIMEA Bluetooth soundbar or enter its BLE address. Setup probes the app protocol and only exposes capabilities the device answers safely.",
-        "data": {
-          "address": "Bluetooth address"
-        }
+        "data": {"address": "Bluetooth address"}
       },
       "bluetooth_confirm": {
         "title": "Add {name}",
@@ -39,92 +37,14 @@
   },
   "entity": {
     "select": {
-      "display_brightness": {
-        "name": "Display brightness",
-        "state": {
-          "dim": "Dim",
-          "low": "Low",
-          "medium": "Medium",
-          "normal": "Normal",
-          "high": "High"
-        }
-      },
-      "screen_timeout": {
-        "name": "Screen timeout",
-        "state": {
-          "never": "Never",
-          "5_seconds": "5 seconds",
-          "30_seconds": "30 seconds",
-          "60_seconds": "60 seconds"
-        }
-      },
-      "prompt_sound": {
-        "name": "Prompt sound",
-        "state": {
-          "none": "None",
-          "low": "Low",
-          "medium": "Medium",
-          "high": "High"
-        }
-      },
-      "auto_standby": {
-        "name": "Automatic standby",
-        "state": {
-          "never": "Never",
-          "15_minutes": "15 minutes",
-          "30_minutes": "30 minutes",
-          "60_minutes": "60 minutes",
-          "4_hours": "4 hours",
-          "8_hours": "8 hours",
-          "12_hours": "12 hours",
-          "24_hours": "24 hours",
-          "48_hours": "48 hours"
-        }
-      }
+      "display_brightness": {"name": "Display brightness", "state": {"dim": "Dim", "low": "Low", "medium": "Medium", "normal": "Normal", "high": "High"}},
+      "screen_timeout": {"name": "Screen timeout", "state": {"never": "Never", "5_seconds": "5 seconds", "30_seconds": "30 seconds", "60_seconds": "60 seconds"}},
+      "prompt_sound": {"name": "Prompt sound", "state": {"none": "None", "low": "Low", "medium": "Medium", "high": "High"}},
+      "auto_standby": {"name": "Automatic standby", "state": {"never": "Never", "15_minutes": "15 minutes", "30_minutes": "30 minutes", "60_minutes": "60 minutes", "4_hours": "4 hours", "8_hours": "8 hours", "12_hours": "12 hours", "24_hours": "24 hours", "48_hours": "48 hours"}}
     },
-    "number": {
-      "equalizer_band": {
-        "name": "EQ {frequency}"
-      }
-    },
-    "switch": {
-      "xupmix": {
-        "name": "X-Upmix"
-      }
-    },
-    "sensor": {
-      "capabilities": {
-        "name": "Capabilities"
-      },
-      "style_band": {
-        "name": "Style {frequency}"
-      },
-      "observed_volume": {
-        "name": "Observed volume (read-only)"
-      },
-      "observed_source": {
-        "name": "Input (read-only)"
-      },
-      "observed_sound_mode": {
-        "name": "Sound mode (read-only)"
-      }
-    },
-    "button": {
-      "style_reset": {
-        "name": "Style Reset"
-      },
-      "style_bass": {
-        "name": "Style Bass"
-      },
-      "style_rock": {
-        "name": "Style Rock"
-      },
-      "style_pop": {
-        "name": "Style Pop"
-      },
-      "style_classical": {
-        "name": "Style Classical"
-      }
-    }
+    "number": {"equalizer_band": {"name": "EQ {frequency}"}},
+    "switch": {"xupmix": {"name": "X-Upmix"}},
+    "sensor": {"capabilities": {"name": "Capabilities"}, "style_band": {"name": "Style {frequency}"}, "observed_volume": {"name": "Observed volume (read-only)"}, "observed_source": {"name": "Input (read-only)"}, "observed_sound_mode": {"name": "Sound mode (read-only)"}},
+    "button": {"style_reset": {"name": "Style Reset"}, "style_bass": {"name": "Style Bass"}, "style_rock": {"name": "Style Rock"}, "style_pop": {"name": "Style Pop"}, "style_classical": {"name": "Style Classical"}}
   }
 }
