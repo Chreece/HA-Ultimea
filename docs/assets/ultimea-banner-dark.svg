@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="400" viewBox="0 0 1200 400" role="img" aria-labelledby="banner-title banner-description">
+<title id="banner-title">ULTIMEA for Home Assistant</title>
+<desc id="banner-description">Local Bluetooth integration for compatible ULTIMEA soundbars. Abstract soundbar and sound waves. No specific model is depicted.</desc>
+<defs>
+  <linearGradient id="background" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#06152b"/><stop offset="1" stop-color="#122a4e"/></linearGradient>
+  <linearGradient id="audio" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#9871f4"/><stop offset="0.5" stop-color="#13bbf4"/><stop offset="1" stop-color="#9871f4"/></linearGradient>
+  <linearGradient id="bar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3a465b"/><stop offset="0.18" stop-color="#172337"/><stop offset="1" stop-color="#0b101b"/></linearGradient>
+  <filter id="glow"><feGaussianBlur stdDeviation="12"/></filter>
+  <pattern id="mesh" width="7" height="6" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="0.8" fill="#a4b5c6" opacity="0.28"/></pattern>
+</defs>
+<rect x="1" y="1" width="1198" height="398" rx="24" fill="url(#background)" stroke="#345879" stroke-width="2"/>
+<ellipse cx="136" cy="310" rx="210" ry="120" fill="#8461ff" opacity="0.13" filter="url(#glow)"/>
+<ellipse cx="1064" cy="310" rx="210" ry="120" fill="#16c7fb" opacity="0.13" filter="url(#glow)"/>
+<text x="600" y="107" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="800" font-size="76" letter-spacing="5" fill="#f8fbff">ULTIMEA</text>
+<text x="600" y="166" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="650" font-size="40" fill="#f8fbff">for Home Assistant</text>
+<rect x="485" y="185" width="230" height="4" rx="2" fill="url(#audio)"/>
+<text x="600" y="232" text-anchor="middle" font-family="Arial,Helvetica,sans-serif" font-weight="400" font-size="24" fill="#b7d4f7">Local Bluetooth integration for compatible soundbars</text>
+<path d="M10 312C108 264 158 351 245 310" fill="none" stroke="#875ff5" stroke-width="3" opacity="0.35"/>
+<path d="M1190 312C1092 264 1042 351 955 310" fill="none" stroke="#23c2f7" stroke-width="3" opacity="0.35"/>
+<rect x="236" y="297.0" width="7" height="30" rx="3.5" fill="#10bff0" opacity="0.78"/>
+<rect x="214" y="283.0" width="7" height="58" rx="3.5" fill="#10bff0" opacity="0.66"/>
+<rect x="192" y="264.0" width="7" height="96" rx="3.5" fill="#895df6" opacity="0.54"/>
+<rect x="170" y="244.0" width="7" height="136" rx="3.5" fill="#895df6" opacity="0.78"/>
+<rect x="148" y="269.5" width="7" height="85" rx="3.5" fill="#10bff0" opacity="0.66"/>
+<rect x="126" y="254.5" width="7" height="115" rx="3.5" fill="#10bff0" opacity="0.54"/>
+<rect x="104" y="278.0" width="7" height="68" rx="3.5" fill="#895df6" opacity="0.78"/>
+<rect x="82" y="291.0" width="7" height="42" rx="3.5" fill="#895df6" opacity="0.66"/>
+<rect x="962" y="297.0" width="7" height="30" rx="3.5" fill="#10bff0" opacity="0.78"/>
+<rect x="984" y="283.0" width="7" height="58" rx="3.5" fill="#10bff0" opacity="0.66"/>
+<rect x="1006" y="264.0" width="7" height="96" rx="3.5" fill="#895df6" opacity="0.54"/>
+<rect x="1028" y="244.0" width="7" height="136" rx="3.5" fill="#895df6" opacity="0.78"/>
+<rect x="1050" y="269.5" width="7" height="85" rx="3.5" fill="#10bff0" opacity="0.66"/>
+<rect x="1072" y="254.5" width="7" height="115" rx="3.5" fill="#10bff0" opacity="0.54"/>
+<rect x="1094" y="278.0" width="7" height="68" rx="3.5" fill="#895df6" opacity="0.78"/>
+<rect x="1116" y="291.0" width="7" height="42" rx="3.5" fill="#895df6" opacity="0.66"/>
+<ellipse cx="600" cy="369" rx="352" ry="22" fill="#121a2e" opacity="0.2" filter="url(#glow)"/>
+<rect x="270" y="277" width="660" height="80" rx="17" fill="url(#bar)" stroke="#526783" stroke-width="2"/>
+<rect x="282" y="289" width="636" height="57" rx="10" fill="url(#mesh)"/>
+<path d="M290 292H910" stroke="#8190ad" stroke-opacity="0.4" stroke-width="1.5"/>
+<rect x="568" y="323" width="64" height="5" rx="2.5" fill="#20c3fc" filter="url(#glow)" opacity="0.85"/>
+<rect x="568" y="323" width="64" height="3" rx="1.5" fill="#27c9ff"/>
+</svg>

@@ -7,16 +7,16 @@
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="custom_components/ultimea/brand/dark_logo.png">
-    <source media="(prefers-color-scheme: light)" srcset="custom_components/ultimea/brand/logo.png">
-    <img src="custom_components/ultimea/brand/logo.png" alt="ULTIMEA for Home Assistant" width="640">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/ultimea-banner-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/ultimea-banner-light.svg">
+    <img src="docs/assets/ultimea-banner-light.svg" alt="ULTIMEA for Home Assistant — local Bluetooth integration for compatible soundbars" width="820">
   </picture>
 </p>
 
 <h1 align="center">ULTIMEA for Home Assistant</h1>
 
 <p align="center">
-  Local Bluetooth control for <strong>app-capable ULTIMEA soundbars</strong>, with Poseidon D80 Boom (U2623) as the first hardware-verified model.<br>
+  Local Bluetooth control for <strong>compatible ULTIMEA soundbars</strong>, with model-specific features enabled only when supported and verified.<br>
   No ULTIMEA cloud account, phone app, or internet connection is required after installation.
 </p>
 
