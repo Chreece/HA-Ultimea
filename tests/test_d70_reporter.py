@@ -66,7 +66,7 @@ def test_reporter_model_and_every_source_setter():
         )
     assert profiles.source_value_for_model("Poseidon D70", const.Source.HDMI) is None
     assert profiles.source_options_for_model("Poseidon D70") == (
-        "ARC", "Optical", "Bluetooth", "AUX", "USB"
+        "ARC", "Optical", "AUX", "Bluetooth", "USB"
     )
 
 
