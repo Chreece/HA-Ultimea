@@ -5,8 +5,6 @@ on:
     workflows: ["Tests"]
     types: [completed]
   workflow_dispatch:
-  issue_comment:
-    types: [created]
 
 permissions:
   contents: write
@@ -15,10 +13,6 @@ jobs:
   release:
     if: >-
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'issue_comment' &&
-       github.event.issue.number == 37 &&
-       github.event.issue.pull_request != null &&
-       github.event.comment.body == '/publish-ha-ultimea-2026.10.10-51b6946d-confirmed') ||
       (github.event.workflow_run.conclusion == 'success' &&
        github.event.workflow_run.head_branch == 'master')
     runs-on: ubuntu-latest
@@ -29,8 +23,6 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             echo "sha=${{ github.event.workflow_run.head_sha }}" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event_name }}" = "issue_comment" ]; then
-            echo "sha=51b6946d1e937300389bac5d85e058765e7518cd" >> "$GITHUB_OUTPUT"
           else
             echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
