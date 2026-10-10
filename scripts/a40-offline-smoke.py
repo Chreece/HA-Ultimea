@@ -66,7 +66,7 @@ def main() -> int:
     _install_pytest_raises_shim()
     print("[3/3] Executing A40 and protocol tests without pip", flush=True)
     passed = failed = skipped = 0
-    for name in ("test_aura_a40.py", "test_protocol.py", "test_wire_profiles.py"):
+    for name in ("test_aura_a40.py", "test_protocol.py", "test_wire_profiles.py", "test_d70_reporter.py"):
         path = ROOT / "tests" / name
         try:
             functions = runpy.run_path(str(path), run_name=f"_local_{name.replace('.', '_')}")

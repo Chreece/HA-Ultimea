@@ -48,9 +48,13 @@ def test_d70_profile_is_evidence_limited():
     assert "Source.OPTICAL: 0x01" in profiles
     assert "Source.AUX: 0x03" in profiles
     d70_map = profiles.split("D70_SOURCE_CONTROL_VALUES", 1)[1].split("D70_SOURCE_NAMES", 1)[0]
-    assert "Source.USB" not in d70_map
-    assert "Source.BLUETOOTH" not in d70_map
+    assert "Source.USB: 0x04" in d70_map
+    assert "Source.BLUETOOTH: 0x02" in d70_map
     assert 'Source.EARC: "ARC"' in profiles
+    assert "Feature.POWER: FeatureWireSpec(write=_control(CMD_POWER))" in profiles
+    assert "Feature.MUTE: FeatureWireSpec(write=_control(CMD_MUTE))" in profiles
+    assert "power_on_supported=False" in profiles
+    assert "power_off_expects_ack=False" in profiles
 
 
 def test_source_values_and_labels_are_profile_specific():

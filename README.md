@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.10.10-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.10.10.1-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -31,11 +31,11 @@
 | Device/protocol | Status |
 | --- | --- |
 | ULTIMEA Poseidon D80 Boom (U2623) | ✅ Hardware verified |
-| ULTIMEA Poseidon D70 | 🧪 Partial, capture-backed: volume + ARC/Optical/AUX source writes |
+| ULTIMEA Poseidon D70 | 🧪 Reporter-confirmed: volume, ARC/Optical/Bluetooth/AUX/USB, mute and power-off; BLE power-on unavailable |
 | ULTIMEA Aura A40 (V56) | 🧪 Confirmed BLE discovery and read-only state; no verified write controls |
 | Other ULTIMEA devices that pass the APK common/custom protocol probe | 🧪 Experimental, capability-driven/read-only writes unless proven |
 
-The integration is not a D80 model-name allow-list. It discovers likely ULTIMEA advertisements, selects the app protocol transport, asks the device for its model/protocol information, fetches the raw capability block when available, and probes safe read-only states. Writable controls are profile-gated and are exposed only when the exact model has a proven wire mapping. The D70 profile currently exposes only the reporter-captured volume and ARC/Optical/AUX setters; uncaptured controls remain disabled.
+The integration is not a D80 model-name allow-list. It discovers likely ULTIMEA advertisements, selects the app protocol transport, asks the device for its model/protocol information, fetches the raw capability block when available, and probes safe read-only states. Writable controls are profile-gated and are exposed only when the exact model has a proven wire mapping. The D70 profile exposes only reporter-confirmed setters; Bluetooth power-on and uncaptured audio/EQ controls remain disabled.
 
 ## Aura A40 V56 read-only support
 
@@ -49,20 +49,31 @@ Home Assistant exposes three ordinary, visible **read-only sensors** for **Volum
 
 ## Poseidon D70 partial support
 
-Issue #4 supplied control captures proving the same AA/BB framing for:
+Issue #4 now confirms the exact protocol model string `Poseidon D70` and
+the following CONTROL writes from a working physical unit:
 
-- absolute volume: CONTROL `02:03`;
-- ARC: CONTROL `02:02 00`;
-- Optical: CONTROL `02:02 01`;
-- AUX: CONTROL `02:02 03`.
+- Absolute volume: `02:03` (0–100 observed).
+- Source: `02:02 00` ARC, `01` Optical, `02` Bluetooth,
+  `03` AUX and `04` USB.
+- Mute: `02:0A 00` on, `02:0A 01` off.
+- Power **off**: `02:09 00`.
 
-The D70 source enum is model-specific: its captured ARC setter uses `00`, while
-the D80 eARC setter uses `10`. The integration therefore keeps source wire values
-inside the model profile and labels the D70 return-channel input **ARC**.
+The D70 source enum is model-specific: ARC uses `00`, not the D80's
+eARC setter value `10`. The input selector offers exactly ARC,
+Optical, Bluetooth, AUX and USB; HDMI is not exposed.
 
-Bluetooth, USB, power, mute, EQ and other D70 writes are intentionally not exposed
-until equivalent captures prove them. Read-only safe protocol probes may still
-populate state/capability information when the device responds.
+**Power on is intentionally not offered.** The reporter confirms that D70
+stops responding to Bluetooth when powered off. The off command is sent
+only after the standard safe-code session, accepts success when the GATT
+write completes, and does not wait for a reply after shutdown. A rejected
+GATT write is reported as an error rather than falsely setting the state
+to off. The reported off state after a successful write is optimistic.
+
+The PCAP linked by the reporter could not be downloaded into our test
+environment; these mappings are based on the exact command bytes
+reported in [issue #4](https://github.com/Chreece/HA-Ultimea/issues/4).
+No D70 sound mode, EQ, X-Upmix or unverified INFO setter is enabled.
+The D80 and Aura A40 profiles remain independent.
 
 ## Poseidon D80 Boom entities
 

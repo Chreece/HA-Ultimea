@@ -110,8 +110,13 @@ Proven CONTROL frames:
 |---|---:|---:|
 | Source: ARC | `02` | `00` |
 | Source: Optical | `02` | `01` |
+| Source: Bluetooth | `02` | `02` |
 | Source: AUX | `02` | `03` |
+| Source: USB | `02` | `04` |
 | Volume | `03` | one-byte absolute value (`00`–`64` observed) |
+| Mute on | `0A` | `00` |
+| Mute off | `0A` | `01` |
+| Power off only | `09` | `00` |
 
 Examples supplied by the reporter:
 
@@ -122,11 +127,29 @@ aa 01 00 02 03 0b ba   volume 11
 aa 01 00 02 02 00 ae   ARC
 aa 01 00 02 02 01 af   Optical
 aa 01 00 02 02 03 b1   AUX
+aa 01 00 02 02 02 b0   Bluetooth
+aa 01 00 02 02 04 b2   USB
+aa 01 00 02 0a 00 b6   Mute on
+aa 01 00 02 0a 01 b7   Mute off
+aa 01 00 02 09 00 b5   Power off
 ```
 
-No D70 INFO-source capture has been supplied yet. Generic INFO decoding remains
-read-only, while source/volume writes are gated by the D70 profile. Bluetooth,
-USB, power, mute, sound-mode/EQ and advanced setters remain disabled until captured.
+The expanded commands are corroborated by the reporter's textual follow-up
+in [issue #4](https://github.com/Chreece/HA-Ultimea/issues/4). The linked
+anonymized PCAP ZIP could not be downloaded and has **not** been inspected;
+the complete `AA` frames above were calculated from the reported command
+bytes using the already verified protocol checksum.
+
+**No Bluetooth power on**: the D70 is unreachable while off. Home Assistant
+advertises only `TURN_OFF`, never `TURN_ON`; even direct calls to
+`async_set_power(True)` fail before any Bluetooth I/O. D70 power-off
+writes `02:09:00` after the safe-code handshake and does not await the
+reply that shutdown prevents. Success after GATT write is optimistic.
+If connection or GATT write fails, the off state must not be fabricated.
+
+No D70 INFO-source capture has been verified independently, so the common
+INFO source decoder remains a read-only fallback. D70 sound mode/EQ,
+X-Upmix, standby and all other unconfirmed setters remain disabled.
 
 ## Aura A40 V56 read-only evidence (issue #5)
 
