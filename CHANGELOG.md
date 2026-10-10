@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.10.2
+
+### Fixed
+
+- Corrected Poseidon D70 shutdown to wait for the matching `02:09 00` response. The reporter's actual PCAP proves an ACK arrives around 150 ms after the write; the prior no-ACK assumption in `2026.10.10.1` was incorrect.
+- Removed the unnecessary no-response GATT dispatch path. D70 power-off failures or missing ACKs no longer optimistically set the soundbar off; D80's previously proven disconnect behavior remains unchanged.
+- Parsed the attached D70 PCAPNG (249 BLE packets, 139 valid protocol frames), confirmed the V50 firmware, control replies for all five sources/mute/volume/power-off, and added anonymized capture-derived regression tests.
+- Restricted the D70 INFO source mapping to supported inputs, excluding HDMI.
+
 ## 2026.10.10.1
 
 ### Added

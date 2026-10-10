@@ -46,6 +46,7 @@ const = _load("const")
 profiles = _load("profiles")
 protocol = _load("protocol")
 evidence = json.loads((ROOT / "tests/fixtures/d70_reporter_commands.json").read_text())
+pcap = json.loads((ROOT / "tests/fixtures/d70_pcap_evidence.json").read_text())
 
 
 def test_reporter_model_and_every_source_setter():
@@ -86,7 +87,7 @@ def test_power_on_not_advertised_when_d70_is_ble_unreachable():
     supported = set(profiles.VERIFIED_D70_FEATURES)
     d70 = profiles.profile_for_model("Poseidon D70")
     assert not d70.power_on_supported
-    assert not d70.power_off_expects_ack
+    assert not d70.power_off_disconnect_fallback
     assert not profiles.can_turn_on("Poseidon D70", supported)
     assert profiles.can_turn_on(
         "Poseidon D80 Boom", {const.Feature.POWER}
@@ -99,7 +100,7 @@ def test_d80_and_a40_safety_regression():
     assert profiles.source_value_for_model("Poseidon D70", const.Source.EARC) == 0x00
     assert profiles.source_value_for_model("Aura A40", const.Source.BLUETOOTH) is None
     assert not profiles.writable_features_for_model("Aura A40", set(const.Feature))
-    assert profiles.profile_for_model("Poseidon D80 Boom").power_off_expects_ack
+    assert profiles.profile_for_model("Poseidon D80 Boom").power_off_disconnect_fallback
 
 
 def _isolated_methods(method_names: tuple[str, ...], *, player: bool = False):
@@ -142,55 +143,125 @@ def _device_scope():
         "UltimeaCommandError": error,
         "UltimeaConnectionError": connection_error,
         "UltimeaError": error,
+        "_LOGGER": SimpleNamespace(debug=lambda *args, **kwargs: None),
     }
 
 
-def test_d70_poweroff_gatt_write_does_not_wait_for_nonexistent_ack():
-    source, name = _isolated_methods(("_async_request", "async_set_power"))
+def _poweroff_peer(*, write_error: Exception | None = None, send_ack: bool = True):
+    """Execute the actual production ACK dispatcher with a simulated BLE peer."""
+    source, name = _isolated_methods(
+        ("_async_request", "_async_write_verified", "async_set_power")
+    )
     scope = _device_scope()
     exec(source, scope)
     obj = scope[name]()
     obj.identity = SimpleNamespace(model="Poseidon D70")
     obj.capabilities = SimpleNamespace(features=set(profiles.VERIFIED_D70_FEATURES))
+    obj.supports = lambda feature: feature in obj.capabilities.features
     obj.state = SimpleNamespace(power=True)
     obj._write_uuid = "test-write-uuid"
     obj._command_lock = asyncio.Lock()
     obj._pending = None
     obj._schedule_disconnect = lambda: None
     obj._async_notify_listeners = lambda: None
-    peer = SimpleNamespace(write_gatt_char=AsyncMock(return_value=None))
-    obj.async_ensure_connected = AsyncMock(return_value=peer)
+    obj.connected = False  # Power-off path must not fake success on disconnect.
 
+    async def on_write(uuid, packet, response=False):
+        assert uuid == "test-write-uuid"
+        assert not response
+        assert packet.hex() == pcap["transactions"]["power_off"]["tx"]
+        assert obj._pending is not None
+        group, command, expected_data, future = obj._pending
+        assert (group, command, expected_data) == (
+            const.GROUP_CONTROL, const.CMD_POWER, b"\x00"
+        )
+        if write_error is not None:
+            raise write_error
+        if send_ack:
+            reply = next(protocol.iter_frames(
+                bytes.fromhex(pcap["transactions"]["power_off"]["rx"])
+            ))
+            assert reply.data == expected_data
+            future.set_result(reply)
+
+    peer = SimpleNamespace(write_gatt_char=AsyncMock(side_effect=on_write))
+    obj.async_ensure_connected = AsyncMock(return_value=peer)
+    return obj, peer, scope
+
+
+def test_d70_poweroff_waits_for_pcap_confirmed_ack():
+    obj, peer, scope = _poweroff_peer()
     asyncio.run(obj.async_set_power(False))
-    peer.write_gatt_char.assert_awaited_once_with(
-        "test-write-uuid",
-        bytes.fromhex(evidence["power_off"]),
-        response=False,
-    )
+    peer.write_gatt_char.assert_awaited_once()
     assert obj.state.power is False
     assert obj._pending is None
     obj.async_ensure_connected.assert_awaited_once()
 
 
-def test_d70_poweroff_gatt_failure_is_not_reported_as_success():
-    source, name = _isolated_methods(("_async_request", "async_set_power"))
+def test_d70_poweroff_rejected_gatt_never_fakes_state_even_if_disconnected():
+    obj, peer, scope = _poweroff_peer(write_error=OSError("GATT rejected"))
+    with pytest.raises(scope["UltimeaCommandError"], match="GATT rejected"):
+        asyncio.run(obj.async_set_power(False))
+    assert obj.state.power is True
+    assert obj._pending is None
+    peer.write_gatt_char.assert_awaited_once()
+
+
+def test_d70_poweroff_missing_ack_never_fakes_state():
+    source, name = _isolated_methods(("async_set_power",))
     scope = _device_scope()
     exec(source, scope)
     obj = scope[name]()
     obj.identity = SimpleNamespace(model="Poseidon D70")
     obj.capabilities = SimpleNamespace(features=set(profiles.VERIFIED_D70_FEATURES))
     obj.state = SimpleNamespace(power=True)
-    obj._write_uuid = "test-write-uuid"
-    obj._command_lock = asyncio.Lock()
-    obj._pending = None
-    obj._schedule_disconnect = lambda: None
-    obj._async_notify_listeners = lambda: None
-    peer = SimpleNamespace(write_gatt_char=AsyncMock(side_effect=OSError("GATT rejected")))
-    obj.async_ensure_connected = AsyncMock(return_value=peer)
-
-    with pytest.raises(scope["UltimeaCommandError"], match="GATT rejected"):
+    obj.connected = False
+    obj._async_write_verified = AsyncMock(
+        side_effect=scope["UltimeaCommandError"]("missing ACK")
+    )
+    with pytest.raises(scope["UltimeaCommandError"], match="missing ACK"):
         asyncio.run(obj.async_set_power(False))
+    obj._async_write_verified.assert_awaited_once()
+    assert obj._async_write_verified.await_args.kwargs["refresh"] is None
     assert obj.state.power is True
+
+
+def test_actual_pcap_frames_confirm_all_supported_d70_controls():
+    assert pcap["model"] == "Poseidon D70"
+    assert pcap["firmware"] == "V50"
+    assert pcap["capture_packets"] == 249
+    assert pcap["protocol_frames"] == 139
+    for name, pair in pcap["transactions"].items():
+        sent = bytes.fromhex(pair["tx"])
+        replied = bytes.fromhex(pair["rx"])
+        assert sent[0] == 0xAA
+        assert replied[0] == 0xBB
+        assert sent[1:] == replied[1:]
+        group, command, value = sent[3], sent[4], sent[5:-1]
+        assert protocol.build_command(group, command, value) == sent
+        parsed = list(protocol.iter_frames(replied))
+        assert len(parsed) == 1
+        assert (parsed[0].group, parsed[0].command, parsed[0].data) == (
+            group, command, value
+        )
+    assert pcap["transactions"]["power_off"]["ack_delay_ms"] > 0
+    assert pcap["transactions"]["power_off"]["ack_delay_ms"] < 300
+
+
+def test_pcap_verifies_arc_info_and_no_d70_hdmi_input():
+    flags = pcap["capabilities_flags"]
+    assert len(flags) == 17
+    assert flags[4] == 1  # ARC
+    assert flags[5] == 0  # HDMI
+    assert flags[6:9] == [1, 1, 1]  # BT, AUX, USB
+    decoded = list(protocol.iter_frames(bytes.fromhex(pcap["info_source_arc"])))
+    assert len(decoded) == 1
+    assert decoded[0].group == const.GROUP_INFO
+    assert decoded[0].command == const.INFO_SOURCE
+    assert profiles.decode_source_value(
+        "Poseidon D70", decoded[0].data[0], info=True
+    ) is const.Source.EARC
+    assert profiles.decode_source_value("Poseidon D70", 0x05, info=True) is None
 
 
 def test_d70_poweron_rejected_without_bluetooth_io():

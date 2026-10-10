@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img alt="Release" src="https://img.shields.io/badge/release-2026.10.10.1-blue">
+  <img alt="Release" src="https://img.shields.io/badge/release-2026.10.10.2-blue">
   <img alt="Home Assistant 2026.7+" src="https://img.shields.io/badge/Home%20Assistant-2026.7%2B-41BDF5">
   <img alt="HACS" src="https://img.shields.io/badge/HACS-Custom-41BDF5">
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green">
@@ -62,17 +62,25 @@ The D70 source enum is model-specific: ARC uses `00`, not the D80's
 eARC setter value `10`. The input selector offers exactly ARC,
 Optical, Bluetooth, AUX and USB; HDMI is not exposed.
 
-**Power on is intentionally not offered.** The reporter confirms that D70
-stops responding to Bluetooth when powered off. The off command is sent
-only after the standard safe-code session, accepts success when the GATT
-write completes, and does not wait for a reply after shutdown. A rejected
-GATT write is reported as an error rather than falsely setting the state
-to off. The reported off state after a successful write is optimistic.
+**Power on is intentionally not offered.** The D70 stops accepting BLE
+connections after shutdown. Power-off **does** acknowledge CONTROL
+`02:09 00` before disconnecting: the PCAP contains both the `AA` request
+and matching `BB` response approximately 150 ms later. The integration
+therefore awaits the verified acknowledgement, after the standard
+safe-code session. A failed GATT write, lost acknowledgement or early
+disconnect cannot falsely mark the D70 as off. D80's separate,
+hardware-verified power behavior is unchanged.
 
-The PCAP linked by the reporter could not be downloaded into our test
-environment; these mappings are based on the exact command bytes
-reported in [issue #4](https://github.com/Chreece/HA-Ultimea/issues/4).
-No D70 sound mode, EQ, X-Upmix or unverified INFO setter is enabled.
+The anonymized PCAP was attached directly in the conversation as
+`ultimad70_anon.zip` and independently parsed: 249 BLE packets and 139
+valid ULTIMEA frames. It confirms **firmware V50**, all five D70 source
+writes and replies, mute/unmute replies, volume 0/9/100 replies and
+the shutdown acknowledgement. A sanitized, address/serial-free
+`tests/fixtures/d70_pcap_evidence.json` records these findings.
+
+The INFO source decoder is restricted to the D70's documented inputs
+(no HDMI). EQ and sound-mode writes remain disabled because the capture
+does not prove them. See [issue #4](https://github.com/Chreece/HA-Ultimea/issues/4).
 The D80 and Aura A40 profiles remain independent.
 
 ## Poseidon D80 Boom entities
