@@ -6,7 +6,11 @@
 </p>
 
 <p align="center">
-  <img src="custom_components/ultimea/brand/logo.png" alt="ULTIMEA for Home Assistant" width="640">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="custom_components/ultimea/brand/dark_logo.png">
+    <source media="(prefers-color-scheme: light)" srcset="custom_components/ultimea/brand/logo.png">
+    <img src="custom_components/ultimea/brand/logo.png" alt="ULTIMEA for Home Assistant" width="640">
+  </picture>
 </p>
 
 <h1 align="center">ULTIMEA for Home Assistant</h1>
