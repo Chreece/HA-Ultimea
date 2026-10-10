@@ -4,6 +4,15 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.10.10
+
+### Added
+
+- Added evidence-backed Aura A40 V56 read-only profile with visible volume, source and sound-mode status sensors; no unproven A40 controls are enabled.
+- Restricted A40 INFO decoding to its four documented inputs and prevented unsupported HDMI/ARC decoding from the common fallback.
+- Diagnostics and Capabilities sensor now separate available read features from verified writable features.
+- Added sanitized Aura A40 issue #5 regression fixture and source/write-isolation tests.
+
 ## 2026.10.06
 
 ### Fixed

@@ -1,0 +1,48 @@
+{
+  "model": "Aura A40",
+  "firmware": "V56",
+  "protocol_version": 1,
+  "transport": "common_8d11_8d22",
+  "raw_ability_flags": [
+    0,
+    1,
+    1,
+    0,
+    0,
+    0,
+    1,
+    1,
+    1,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    1,
+    1,
+    0
+  ],
+  "features": [
+    "brightness",
+    "mute",
+    "power",
+    "prompt_sound",
+    "screen_timeout",
+    "sound_mode",
+    "source",
+    "volume"
+  ],
+  "observed_state": {
+    "power": true,
+    "raw_volume": 13,
+    "muted": false,
+    "raw_source": 1,
+    "source": "optical",
+    "raw_sound_mode": 2,
+    "sound_mode": "music",
+    "brightness": "normal",
+    "screen_timeout": "30_seconds",
+    "prompt_sound": "none"
+  }
+}

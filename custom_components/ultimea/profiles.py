@@ -66,6 +66,7 @@ APK_CAPABILITY_VOCABULARY = frozenset(
 )
 
 POSEIDON_D70_MODEL = "Poseidon D70"
+AURA_A40_MODEL = "Aura A40"
 
 VERIFIED_D80_FEATURES = frozenset(
     {
@@ -111,6 +112,17 @@ D70_SOURCE_NAMES: Mapping[Source, str] = {
     Source.EARC: "ARC",
     Source.OPTICAL: "Optical",
     Source.AUX: "AUX",
+}
+
+# Aura A40 V56: INFO source 01 = Optical was observed in issue #5.
+# Other values follow the app-derived common INFO enum; their physical inputs
+# are corroborated by the A40 ability flags and manufacturer documentation.
+# No A40 CONTROL/SET command has been captured.
+A40_INFO_SOURCE_VALUES: Mapping[int, Source] = {
+    0x01: Source.OPTICAL,
+    0x02: Source.BLUETOOTH,
+    0x03: Source.AUX,
+    0x04: Source.USB,
 }
 
 
@@ -276,6 +288,12 @@ D70_PROFILE = UltimeaModelProfile(
 APK_COMMON_PROFILE = UltimeaModelProfile(
     key="apk_common", verified=False, apk_embedded=True
 )
+A40_PROFILE = UltimeaModelProfile(
+    key="aura_a40",
+    verified=False,
+    # Explicit INFO read mapping only. No feature is proven writable on A40.
+    source_info_values=A40_INFO_SOURCE_VALUES,
+)
 GENERIC_COMMON_PROFILE = UltimeaModelProfile(key="generic_common", verified=False)
 
 
@@ -285,6 +303,8 @@ def profile_for_model(model: str | None) -> UltimeaModelProfile:
         return D80_BOOM_PROFILE
     if normalized == POSEIDON_D70_MODEL.casefold():
         return D70_PROFILE
+    if normalized == AURA_A40_MODEL.casefold():
+        return A40_PROFILE
     if model in APK_EMBEDDED_MODELS:
         return APK_COMMON_PROFILE
     return GENERIC_COMMON_PROFILE
@@ -299,7 +319,11 @@ def decode_source_value(
     """Decode source values without mixing CONTROL and INFO enums."""
     profile = profile_for_model(model)
     if info:
-        return profile.decode_info_source(value) or INFO_VALUE_TO_SOURCE.get(value)
+        # Explicit model read enums override generic mappings. In particular,
+        # never mislabel unsupported HDMI/ARC values on the Aura A40.
+        if profile.source_info_values:
+            return profile.decode_info_source(value)
+        return INFO_VALUE_TO_SOURCE.get(value)
     return profile.decode_control_source(value) or VALUE_TO_SOURCE.get(value)
 
 

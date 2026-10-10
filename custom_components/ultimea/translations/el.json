@@ -5,7 +5,9 @@
       "user": {
         "title": "Προσθήκη ηχόμπαρας ULTIMEA",
         "description": "Επίλεξε μια ηχόμπαρα Bluetooth ULTIMEA που εντοπίστηκε ή εισήγαγε τη διεύθυνση BLE. Κατά τη ρύθμιση ανιχνεύονται αυτόματα το πρωτόκολλο και οι λειτουργίες που απαντούν με ασφάλεια.",
-        "data": {"address": "Διεύθυνση Bluetooth"}
+        "data": {
+          "address": "Διεύθυνση Bluetooth"
+        }
       },
       "bluetooth_confirm": {
         "title": "Προσθήκη {name}",
@@ -37,14 +39,92 @@
   },
   "entity": {
     "select": {
-      "display_brightness": {"name": "Φωτεινότητα οθόνης", "state": {"dim": "Πολύ χαμηλή", "low": "Χαμηλή", "medium": "Μεσαία", "normal": "Κανονική", "high": "Υψηλή"}},
-      "screen_timeout": {"name": "Αυτόματο σβήσιμο οθόνης", "state": {"never": "Ποτέ", "5_seconds": "5 δευτερόλεπτα", "30_seconds": "30 δευτερόλεπτα", "60_seconds": "60 δευτερόλεπτα"}},
-      "prompt_sound": {"name": "Ήχος επιβεβαίωσης", "state": {"none": "Κανένας", "low": "Χαμηλός", "medium": "Μεσαίος", "high": "Υψηλός"}},
-      "auto_standby": {"name": "Αυτόματο standby", "state": {"never": "Ποτέ", "15_minutes": "15 λεπτά", "30_minutes": "30 λεπτά", "60_minutes": "60 λεπτά", "4_hours": "4 ώρες", "8_hours": "8 ώρες", "12_hours": "12 ώρες", "24_hours": "24 ώρες", "48_hours": "48 ώρες"}}
+      "display_brightness": {
+        "name": "Φωτεινότητα οθόνης",
+        "state": {
+          "dim": "Πολύ χαμηλή",
+          "low": "Χαμηλή",
+          "medium": "Μεσαία",
+          "normal": "Κανονική",
+          "high": "Υψηλή"
+        }
+      },
+      "screen_timeout": {
+        "name": "Αυτόματο σβήσιμο οθόνης",
+        "state": {
+          "never": "Ποτέ",
+          "5_seconds": "5 δευτερόλεπτα",
+          "30_seconds": "30 δευτερόλεπτα",
+          "60_seconds": "60 δευτερόλεπτα"
+        }
+      },
+      "prompt_sound": {
+        "name": "Ήχος επιβεβαίωσης",
+        "state": {
+          "none": "Κανένας",
+          "low": "Χαμηλός",
+          "medium": "Μεσαίος",
+          "high": "Υψηλός"
+        }
+      },
+      "auto_standby": {
+        "name": "Αυτόματο standby",
+        "state": {
+          "never": "Ποτέ",
+          "15_minutes": "15 λεπτά",
+          "30_minutes": "30 λεπτά",
+          "60_minutes": "60 λεπτά",
+          "4_hours": "4 ώρες",
+          "8_hours": "8 ώρες",
+          "12_hours": "12 ώρες",
+          "24_hours": "24 ώρες",
+          "48_hours": "48 ώρες"
+        }
+      }
     },
-    "number": {"equalizer_band": {"name": "EQ {frequency}"}},
-    "switch": {"xupmix": {"name": "X-Upmix"}},
-    "sensor": {"capabilities": {"name": "Δυνατότητες"}, "style_band": {"name": "Στυλ {frequency}"}},
-    "button": {"style_reset": {"name": "Επαναφορά στυλ"}, "style_bass": {"name": "Στυλ Bass"}, "style_rock": {"name": "Στυλ Rock"}, "style_pop": {"name": "Στυλ Pop"}, "style_classical": {"name": "Στυλ Classical"}}
+    "number": {
+      "equalizer_band": {
+        "name": "EQ {frequency}"
+      }
+    },
+    "switch": {
+      "xupmix": {
+        "name": "X-Upmix"
+      }
+    },
+    "sensor": {
+      "capabilities": {
+        "name": "Δυνατότητες"
+      },
+      "style_band": {
+        "name": "Στυλ {frequency}"
+      },
+      "observed_volume": {
+        "name": "Ένταση (μόνο ανάγνωση)"
+      },
+      "observed_source": {
+        "name": "Είσοδος (μόνο ανάγνωση)"
+      },
+      "observed_sound_mode": {
+        "name": "Λειτουργία ήχου (μόνο ανάγνωση)"
+      }
+    },
+    "button": {
+      "style_reset": {
+        "name": "Επαναφορά στυλ"
+      },
+      "style_bass": {
+        "name": "Στυλ Bass"
+      },
+      "style_rock": {
+        "name": "Στυλ Rock"
+      },
+      "style_pop": {
+        "name": "Στυλ Pop"
+      },
+      "style_classical": {
+        "name": "Στυλ Classical"
+      }
+    }
   }
 }

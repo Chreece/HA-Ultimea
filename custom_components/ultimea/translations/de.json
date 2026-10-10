@@ -5,7 +5,9 @@
       "user": {
         "title": "ULTIMEA-Soundbar hinzufügen",
         "description": "Wähle eine gefundene ULTIMEA-Bluetooth-Soundbar aus oder gib ihre BLE-Adresse ein. Bei der Einrichtung werden Protokoll und sicher abfragbare Funktionen automatisch erkannt.",
-        "data": {"address": "Bluetooth-Adresse"}
+        "data": {
+          "address": "Bluetooth-Adresse"
+        }
       },
       "bluetooth_confirm": {
         "title": "{name} hinzufügen",
@@ -37,14 +39,92 @@
   },
   "entity": {
     "select": {
-      "display_brightness": {"name": "Displayhelligkeit", "state": {"dim": "Gedimmt", "low": "Niedrig", "medium": "Mittel", "normal": "Normal", "high": "Hoch"}},
-      "screen_timeout": {"name": "Display-Abschaltung", "state": {"never": "Nie", "5_seconds": "5 Sekunden", "30_seconds": "30 Sekunden", "60_seconds": "60 Sekunden"}},
-      "prompt_sound": {"name": "Bestätigungston", "state": {"none": "Aus", "low": "Leise", "medium": "Mittel", "high": "Laut"}},
-      "auto_standby": {"name": "Automatischer Standby", "state": {"never": "Nie", "15_minutes": "15 Minuten", "30_minutes": "30 Minuten", "60_minutes": "60 Minuten", "4_hours": "4 Stunden", "8_hours": "8 Stunden", "12_hours": "12 Stunden", "24_hours": "24 Stunden", "48_hours": "48 Stunden"}}
+      "display_brightness": {
+        "name": "Displayhelligkeit",
+        "state": {
+          "dim": "Gedimmt",
+          "low": "Niedrig",
+          "medium": "Mittel",
+          "normal": "Normal",
+          "high": "Hoch"
+        }
+      },
+      "screen_timeout": {
+        "name": "Display-Abschaltung",
+        "state": {
+          "never": "Nie",
+          "5_seconds": "5 Sekunden",
+          "30_seconds": "30 Sekunden",
+          "60_seconds": "60 Sekunden"
+        }
+      },
+      "prompt_sound": {
+        "name": "Bestätigungston",
+        "state": {
+          "none": "Aus",
+          "low": "Leise",
+          "medium": "Mittel",
+          "high": "Laut"
+        }
+      },
+      "auto_standby": {
+        "name": "Automatischer Standby",
+        "state": {
+          "never": "Nie",
+          "15_minutes": "15 Minuten",
+          "30_minutes": "30 Minuten",
+          "60_minutes": "60 Minuten",
+          "4_hours": "4 Stunden",
+          "8_hours": "8 Stunden",
+          "12_hours": "12 Stunden",
+          "24_hours": "24 Stunden",
+          "48_hours": "48 Stunden"
+        }
+      }
     },
-    "number": {"equalizer_band": {"name": "EQ {frequency}"}},
-    "switch": {"xupmix": {"name": "X-Upmix"}},
-    "sensor": {"capabilities": {"name": "Funktionen"}, "style_band": {"name": "Klangstil {frequency}"}},
-    "button": {"style_reset": {"name": "Klangstil zurücksetzen"}, "style_bass": {"name": "Klangstil Bass"}, "style_rock": {"name": "Klangstil Rock"}, "style_pop": {"name": "Klangstil Pop"}, "style_classical": {"name": "Klangstil Klassik"}}
+    "number": {
+      "equalizer_band": {
+        "name": "EQ {frequency}"
+      }
+    },
+    "switch": {
+      "xupmix": {
+        "name": "X-Upmix"
+      }
+    },
+    "sensor": {
+      "capabilities": {
+        "name": "Funktionen"
+      },
+      "style_band": {
+        "name": "Klangstil {frequency}"
+      },
+      "observed_volume": {
+        "name": "Lautstärke (nur lesen)"
+      },
+      "observed_source": {
+        "name": "Eingang (nur lesen)"
+      },
+      "observed_sound_mode": {
+        "name": "Klangmodus (nur lesen)"
+      }
+    },
+    "button": {
+      "style_reset": {
+        "name": "Klangstil zurücksetzen"
+      },
+      "style_bass": {
+        "name": "Klangstil Bass"
+      },
+      "style_rock": {
+        "name": "Klangstil Rock"
+      },
+      "style_pop": {
+        "name": "Klangstil Pop"
+      },
+      "style_classical": {
+        "name": "Klangstil Klassik"
+      }
+    }
   }
 }
