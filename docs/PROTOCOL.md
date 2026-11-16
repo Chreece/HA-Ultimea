@@ -178,6 +178,44 @@ disabled. The public test fixture `tests/fixtures/d70_pcap_evidence.json`
 contains only the extracted protocol facts, without serial or addresses.
 See [issue #4](https://github.com/Chreece/HA-Ultimea/issues/4).
 
+## Poseidon M60 wire-verified profile
+
+The Poseidon M60 was decoded from an official-app Android HCI snoop capture.
+This is a distinct profile: it must not inherit the D80 Custom EQ/Style curve
+semantics or the D70 source enum.
+
+- `INFO 01:02` returns `Poseidon M60`.
+- `INFO 01:04` returns a serial/firmware string (not retained in the public
+  fixture).
+- `00:00` returned the 26-byte ability bitmap
+  `00 01 01 01 01 00 01 00 01 01 00 00 01 00 00 01 01 01 01 01 01 00 01 01 01 00`.
+- The device remains reachable in standby: `02:09 01` has a matching ACK and
+  `01:0D` reports `01`. Therefore both Home Assistant power actions are
+  exposed.
+
+| Semantic control | SET | INFO state | Values proven on M60 |
+|---|---:|---:|---|
+| Power | `02:09` | `01:0D` | Off `00`, On `01` |
+| Volume | `02:03` | `01:07` | one-byte absolute (`0A`, `20` observed) |
+| Mute | `02:0A` | `01:0E` | On `00`, Off `01` |
+| Source | `02:02` | `01:06` | Optical `01`, Bluetooth `02`, USB `04`, eARC `10` |
+| Sound mode | `02:04` | `01:08` | Movie `01`, Music `02`, Voice `03`, Sport `04`, Night `05`, Game `06`, Custom `08` |
+
+Every captured SET above has a matching `BB` acknowledgement. There are only
+four physical M60 inputs; AUX and HDMI are intentionally rejected by the
+model decoder. Unlike D80, M60 INFO also uses `10` for eARC.
+
+Selecting Custom with `02:04 08` returns a 41-byte payload containing the
+profile ID and frequency table. It is evidence for selecting/decoding Custom,
+not for D80-style editable EQ bands: no M60 full gain-curve write was
+captured. The integration consequently exposes Custom as a media-player sound
+mode only, without D80 Custom EQ number entities or Style actions.
+
+Additional observed telemetry (`01:05`, `01:18`, `01:1B`, `01:1C`, `01:1F`)
+is retained as undocumented and has no entity/control mapping. The sanitized
+regression fixture is `tests/fixtures/poseidon_m60_diagnostic.json`; it has no
+device address, identifier or serial number.
+
 ## Aura A40 V56 read-only evidence (issue #5)
 
 A reporter's diagnostic confirms model `Aura A40`, firmware `V56`, protocol v1, common `8D11/8D22` transport, a valid heartbeat and state GET replies for power, mute, volume, source, sound mode, brightness, screen timeout and prompt sound. Its captured state was on, volume 13, Optical (INFO `01:06=01`) and Music (INFO `01:08=02`).

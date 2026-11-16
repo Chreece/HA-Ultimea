@@ -26,6 +26,7 @@ from .profiles import (
     source_for_name_for_model,
     source_name_for_model,
     source_options_for_model,
+    sound_modes_for_model,
 )
 
 SOURCE_NAMES = {
@@ -167,14 +168,15 @@ class UltimeaMediaPlayer(UltimeaEntity, MediaPlayerEntity):
     def sound_mode_list(self) -> list[str] | None:
         if not self._can_write(Feature.SOUND_MODE):
             return None
+        supported_modes = sound_modes_for_model(self.device.identity.model)
         names = [
             name
             for mode, name in SOUND_MODE_NAMES.items()
-            if mode not in (SoundMode.CUSTOM, SoundMode.STYLE)
+            if mode in supported_modes and mode not in (SoundMode.CUSTOM, SoundMode.STYLE)
         ]
-        if self._can_write(Feature.EQUALIZER):
+        if SoundMode.CUSTOM in supported_modes or self._can_write(Feature.EQUALIZER):
             names.append(SOUND_MODE_NAMES[SoundMode.CUSTOM])
-        if self._can_write(Feature.STYLE):
+        if SoundMode.STYLE in supported_modes or self._can_write(Feature.STYLE):
             names.append(SOUND_MODE_NAMES[SoundMode.STYLE])
         return names
 

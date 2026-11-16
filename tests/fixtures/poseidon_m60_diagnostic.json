@@ -1,0 +1,19 @@
+{
+  "model": "Poseidon M60",
+  "firmware": "V23",
+  "protocol_version": 1,
+  "transport": "common_8d11_8d22",
+  "ability_flags": [0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0],
+  "discovery_features": ["auto_standby", "brightness", "mute", "power", "prompt_sound", "screen_timeout", "sound_mode", "volume"],
+  "observed_state": {
+    "power": true,
+    "raw_volume": 10,
+    "muted": false,
+    "raw_sound_mode": 1
+  },
+  "redactions": {
+    "address": "REDACTED",
+    "serial": "REDACTED",
+    "device_id": "REDACTED"
+  }
+}

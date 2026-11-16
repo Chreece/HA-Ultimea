@@ -36,9 +36,11 @@ from .const import (
     INFO_VOLUME,
     INFO_XUPMIX,
     INFO_VALUE_TO_SOURCE,
+    SOUND_MODE_TO_VALUE,
     SOURCE_TO_VALUE,
     VALUE_TO_SOURCE,
     Feature,
+    SoundMode,
     Source,
     VERIFIED_MODEL,
     VERIFIED_MODEL_NUMBER,
@@ -66,6 +68,7 @@ APK_CAPABILITY_VOCABULARY = frozenset(
 )
 
 POSEIDON_D70_MODEL = "Poseidon D70"
+POSEIDON_M60_MODEL = "Poseidon M60"
 AURA_A40_MODEL = "Aura A40"
 
 VERIFIED_D80_FEATURES = frozenset(
@@ -92,6 +95,12 @@ VERIFIED_D70_FEATURES = frozenset(
         Feature.MUTE,
         Feature.POWER,
     }
+)
+
+# Android HCI capture-backed M60 controls. Setting/telemetry reads seen in the
+# capture deliberately are not made writable without matching SET data.
+VERIFIED_M60_FEATURES = frozenset(
+    {Feature.POWER, Feature.MUTE, Feature.VOLUME, Feature.SOURCE, Feature.SOUND_MODE}
 )
 
 DEFAULT_SOURCE_NAMES: Mapping[Source, str] = {
@@ -127,6 +136,29 @@ D70_INFO_SOURCE_VALUES: Mapping[int, Source] = {
     0x02: Source.BLUETOOTH,
     0x03: Source.AUX,
     0x04: Source.USB,
+}
+
+# M60 INFO and CONTROL both use 0x10 for eARC. It has no AUX or HDMI input.
+M60_SOURCE_VALUES: Mapping[Source, int] = {
+    Source.EARC: 0x10,
+    Source.OPTICAL: 0x01,
+    Source.BLUETOOTH: 0x02,
+    Source.USB: 0x04,
+}
+M60_INFO_SOURCE_VALUES: Mapping[int, Source] = {
+    value: source for source, value in M60_SOURCE_VALUES.items()
+}
+
+# M60 Custom is 0x08, unlike D80 Custom EQ (0x07). Its captured reply is a
+# frequency table, not the D80 writable gain-curve format.
+M60_SOUND_MODE_VALUES: Mapping[SoundMode, int] = {
+    SoundMode.MOVIE: 0x01,
+    SoundMode.MUSIC: 0x02,
+    SoundMode.VOICE: 0x03,
+    SoundMode.SPORT: 0x04,
+    SoundMode.NIGHT: 0x05,
+    SoundMode.GAME: 0x06,
+    SoundMode.CUSTOM: 0x08,
 }
 
 # Aura A40 V56: INFO source 01 = Optical was observed in issue #5.
@@ -210,6 +242,14 @@ D70_WIRE_FEATURES: Mapping[Feature, FeatureWireSpec] = {
     Feature.POWER: FeatureWireSpec(write=_control(CMD_POWER)),
 }
 
+M60_WIRE_FEATURES: Mapping[Feature, FeatureWireSpec] = {
+    Feature.POWER: FeatureWireSpec(_info(INFO_POWER), _control(CMD_POWER)),
+    Feature.MUTE: FeatureWireSpec(_info(INFO_MUTE), _control(CMD_MUTE)),
+    Feature.VOLUME: FeatureWireSpec(_info(INFO_VOLUME), _control(CMD_VOLUME)),
+    Feature.SOURCE: FeatureWireSpec(_info(INFO_SOURCE), _control(CMD_SOURCE)),
+    Feature.SOUND_MODE: FeatureWireSpec(_info(INFO_SOUND_MODE), _control(CMD_SOUND_MODE)),
+}
+
 FRONTIER_STATIC_WIRE_FEATURES: Mapping[Feature, FeatureWireSpec] = {
     Feature.SINGLE_LED_SHUTDOWN_TIME: FeatureWireSpec(
         _info(0x16), _control(0x14)
@@ -234,6 +274,7 @@ class UltimeaModelProfile:
     source_control_values: Mapping[Source, int] = field(default_factory=dict)
     source_info_values: Mapping[int, Source] = field(default_factory=dict)
     source_names: Mapping[Source, str] = field(default_factory=dict)
+    sound_mode_values: Mapping[SoundMode, int] = field(default_factory=dict)
     power_on_supported: bool = True
     # Preserve D80's legacy disconnect fallback. D70's captured ACK is
     # authoritative and must not be replaced by a guessed OFF state.
@@ -285,6 +326,17 @@ class UltimeaModelProfile:
             None,
         )
 
+    def encode_sound_mode(self, mode: SoundMode) -> int | None:
+        """Return the profile's explicitly mapped sound-mode wire value."""
+        if self.sound_mode_values:
+            return self.sound_mode_values.get(mode)
+        return SOUND_MODE_TO_VALUE.get(mode)
+
+    def decode_sound_mode(self, value: int) -> SoundMode | None:
+        """Decode a sound-mode value without assuming D80 custom IDs."""
+        values = self.sound_mode_values or SOUND_MODE_TO_VALUE
+        return next((mode for mode, wire_value in values.items() if wire_value == value), None)
+
 
 D80_BOOM_PROFILE = UltimeaModelProfile(
     key="poseidon_d80_boom",
@@ -311,6 +363,19 @@ D70_PROFILE = UltimeaModelProfile(
     # rejected GATT write or premature disconnect must remain an error.
     power_off_disconnect_fallback=False,
 )
+M60_PROFILE = UltimeaModelProfile(
+    key="poseidon_m60",
+    verified=True,
+    verified_features=VERIFIED_M60_FEATURES,
+    wire_features=M60_WIRE_FEATURES,
+    source_control_values=M60_SOURCE_VALUES,
+    source_info_values=M60_INFO_SOURCE_VALUES,
+    source_names=DEFAULT_SOURCE_NAMES,
+    sound_mode_values=M60_SOUND_MODE_VALUES,
+    # The capture proves direct 02:09:01 power-on from BLE standby.
+    power_on_supported=True,
+    power_off_disconnect_fallback=False,
+)
 APK_COMMON_PROFILE = UltimeaModelProfile(
     key="apk_common", verified=False, apk_embedded=True
 )
@@ -329,6 +394,8 @@ def profile_for_model(model: str | None) -> UltimeaModelProfile:
         return D80_BOOM_PROFILE
     if normalized == POSEIDON_D70_MODEL.casefold():
         return D70_PROFILE
+    if normalized == POSEIDON_M60_MODEL.casefold():
+        return M60_PROFILE
     if normalized == AURA_A40_MODEL.casefold():
         return A40_PROFILE
     if model in APK_EMBEDDED_MODELS:
@@ -371,6 +438,24 @@ def source_options_for_model(model: str | None) -> tuple[str, ...]:
 def source_for_name_for_model(model: str | None, name: str) -> Source | None:
     """Resolve a source label through the exact model profile."""
     return profile_for_model(model).source_for_name(name)
+
+
+def decode_sound_mode_value(model: str | None, value: int) -> SoundMode | None:
+    """Decode a model-specific INFO/CONTROL sound-mode value."""
+    return profile_for_model(model).decode_sound_mode(value)
+
+
+def sound_mode_value_for_model(model: str | None, mode: SoundMode) -> int | None:
+    """Return a proven model-specific CONTROL sound-mode value."""
+    return profile_for_model(model).encode_sound_mode(mode)
+
+
+def sound_modes_for_model(model: str | None) -> tuple[SoundMode, ...]:
+    """Return the sound modes proven selectable for this exact model."""
+    profile = profile_for_model(model)
+    if profile.sound_mode_values:
+        return tuple(profile.sound_mode_values)
+    return tuple(mode for mode in SoundMode if mode not in (SoundMode.CUSTOM, SoundMode.STYLE))
 
 
 def can_write_feature(
