@@ -45,7 +45,7 @@ def test_m60_discovery_fixture_is_sanitized_and_selects_verified_profile():
     profile = profiles.profile_for_model(fixture["model"])
     assert profile.key == "poseidon_m60"
     assert profile.verified
-    assert profiles.can_turn_on(fixture["model"], profile.verified_features)
+    assert not profiles.can_turn_on(fixture["model"], profile.verified_features)
 
 
 def test_m60_decodes_only_the_four_wire_verified_inputs_and_modes():

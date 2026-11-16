@@ -372,8 +372,9 @@ M60_PROFILE = UltimeaModelProfile(
     source_info_values=M60_INFO_SOURCE_VALUES,
     source_names=DEFAULT_SOURCE_NAMES,
     sound_mode_values=M60_SOUND_MODE_VALUES,
-    # The capture proves direct 02:09:01 power-on from BLE standby.
-    power_on_supported=True,
+    # A captured 02:09:01 ACK did not translate into reliable operational
+    # power-on. Keep TURN_ON unavailable until it is hardware-proven.
+    power_on_supported=False,
     power_off_disconnect_fallback=False,
 )
 APK_COMMON_PROFILE = UltimeaModelProfile(

@@ -189,13 +189,13 @@ semantics or the D70 source enum.
   fixture).
 - `00:00` returned the 26-byte ability bitmap
   `00 01 01 01 01 00 01 00 01 01 00 00 01 00 00 01 01 01 01 01 01 00 01 01 01 00`.
-- The device remains reachable in standby: `02:09 01` has a matching ACK and
-  `01:0D` reports `01`. Therefore both Home Assistant power actions are
-  exposed.
+- Although `02:09 01` has a captured ACK and `01:0D` can report `01`, it did
+  not provide reliable real-world wake behavior. Home Assistant deliberately
+  exposes only `TURN_OFF`; direct Bluetooth power-on is rejected before I/O.
 
 | Semantic control | SET | INFO state | Values proven on M60 |
 |---|---:|---:|---|
-| Power | `02:09` | `01:0D` | Off `00`, On `01` |
+| Power | `02:09` | `01:0D` | Off `00` exposed; `On 01` captured but unsupported |
 | Volume | `02:03` | `01:07` | one-byte absolute (`0A`, `20` observed) |
 | Mute | `02:0A` | `01:0E` | On `00`, Off `01` |
 | Source | `02:02` | `01:06` | Optical `01`, Bluetooth `02`, USB `04`, eARC `10` |
