@@ -4,6 +4,7 @@ import ast
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).parents[1]
@@ -122,10 +123,7 @@ def test_public_release_version():
     manifest = ROOT / "custom_components" / "ultimea" / "manifest.json"
     data = json.loads(manifest.read_text(encoding="utf-8"))
     version = data["version"]
-    parts = version.split(".")
-    assert len(parts) in (3, 4)
-    assert len(parts[0]) == 4
-    assert all(part.isdigit() for part in parts)
+    assert re.fullmatch(r"\d{4}\.\d{2}\.\d{2}(?:\.\d+)?(?:b[1-9]\d*)?", version)
     assert data["integration_type"] == "device"
 
     changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
