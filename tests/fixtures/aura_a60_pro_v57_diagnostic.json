@@ -1,0 +1,20 @@
+{
+  "source_issue": "https://github.com/Chreece/HA-Ultimea/issues/40",
+  "model": "Aura A60 Pro",
+  "firmware": "V57",
+  "protocol_version": 1,
+  "transport": "common_8d11_8d22",
+  "safe_code": {"request": "aa ad", "response": "c4 c1"},
+  "raw_ability_flags": [0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1],
+  "info_replies": {
+    "power": "01",
+    "mute": "01",
+    "volume": "2a",
+    "source": "10",
+    "sound_mode": "01",
+    "brightness": "01",
+    "screen_timeout": "02",
+    "prompt_sound": "00",
+    "auto_standby": "0f 00 07 00 00 0f 00 1e 00 3c 00 a0 05 40 0b f0 00"
+  }
+}

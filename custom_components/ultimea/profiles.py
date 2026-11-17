@@ -67,6 +67,7 @@ APK_CAPABILITY_VOCABULARY = frozenset(
 
 POSEIDON_D70_MODEL = "Poseidon D70"
 AURA_A40_MODEL = "Aura A40"
+AURA_A60_PRO_MODEL = "Aura A60 Pro"
 
 VERIFIED_D80_FEATURES = frozenset(
     {
@@ -320,6 +321,13 @@ A40_PROFILE = UltimeaModelProfile(
     # Explicit INFO read mapping only. No feature is proven writable on A40.
     source_info_values=A40_INFO_SOURCE_VALUES,
 )
+A60_PRO_PROFILE = UltimeaModelProfile(
+    key="aura_a60_pro",
+    verified=False,
+    # Issue #40: V57 reports INFO 01:06=10 while on eARC. No other
+    # source code or CONTROL write was captured; do not inherit D80 enums.
+    source_info_values={0x10: Source.EARC},
+)
 GENERIC_COMMON_PROFILE = UltimeaModelProfile(key="generic_common", verified=False)
 
 
@@ -331,6 +339,8 @@ def profile_for_model(model: str | None) -> UltimeaModelProfile:
         return D70_PROFILE
     if normalized == AURA_A40_MODEL.casefold():
         return A40_PROFILE
+    if normalized == AURA_A60_PRO_MODEL.casefold():
+        return A60_PRO_PROFILE
     if model in APK_EMBEDDED_MODELS:
         return APK_COMMON_PROFILE
     return GENERIC_COMMON_PROFILE

@@ -37,6 +37,7 @@
 | ULTIMEA Poseidon D80 Boom (U2623) | ✅ Hardware verified |
 | ULTIMEA Poseidon D70 | 🧪 Reporter-confirmed: volume, ARC/Optical/Bluetooth/AUX/USB, mute and power-off; BLE power-on unavailable |
 | ULTIMEA Aura A40 (V56) | 🧪 Confirmed BLE discovery and read-only state; no verified write controls |
+| ULTIMEA Aura A60 Pro (V57) | 🧪 Reporter-confirmed read-only state, including eARC; no verified write controls |
 | Other ULTIMEA devices that pass the APK common/custom protocol probe | 🧪 Experimental, capability-driven/read-only writes unless proven |
 
 The integration is not a D80 model-name allow-list. It discovers likely ULTIMEA advertisements, selects the app protocol transport, asks the device for its model/protocol information, fetches the raw capability block when available, and probes safe read-only states. Writable controls are profile-gated and are exposed only when the exact model has a proven wire mapping. The D70 profile exposes only reporter-confirmed setters; Bluetooth power-on and uncaptured audio/EQ controls remain disabled.
@@ -50,6 +51,26 @@ ULTIMEA confirms the A40 has **Optical, Bluetooth, AUX and USB**, with **no HDMI
 Home Assistant exposes three ordinary, visible **read-only sensors** for **Volume, Input and Sound mode**, plus the existing media-player state. Sensor values come from actual device read responses and notifications (reload/reconnect refreshes state).
 
 **A40 write commands are not proven by this diagnostic.** No D80/D70 setters are inherited, so all A40 control buttons remain intentionally disabled. No further technical testing is required from the reporter for this safe, read-only implementation.
+
+## Aura A60 Pro V57 read-only support
+
+[Issue #40](https://github.com/Chreece/HA-Ultimea/issues/40) provides a read-only
+diagnostic for **Aura A60 Pro**, firmware **V57**, using the common `8D11/8D22`
+transport. Its `INFO 01:06=10` reply is decoded as **eARC** for this model.
+Other A60 Pro input codes remain unknown until observed; D80/D70/A40 source
+mappings are unchanged.
+
+Home Assistant exposes read-only **Volume, Input and Sound mode** sensors plus
+the existing media-player state. The reported values were volume **42**, **eARC**
+and **Movie**. Volume is the raw device level, without a percentage unit because
+the diagnostic does not establish its maximum. Unknown input codes show an
+unknown state instead of retaining the previous input.
+
+The existing handshake accepts the reported valid safe-code reply even though
+it does not follow the D80 complement relation. All **25 capability bytes** are
+preserved in diagnostics; flags alone do not enable controls. Power, mute,
+volume, source, sound mode, settings, EQ and X-Upmix writes remain disabled
+until command captures and hardware verification establish their behavior.
 
 ## Poseidon D70 partial support
 
