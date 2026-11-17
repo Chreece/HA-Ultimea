@@ -70,8 +70,13 @@ jobs:
           if gh release view "$VERSION" >/dev/null 2>&1; then
             echo "Release $VERSION already exists; nothing to do."
           else
+            release_flags=()
+            if [[ "$VERSION" =~ b[0-9]+$ ]]; then
+              release_flags+=(--prerelease --latest=false)
+            fi
             gh release create "$VERSION" \
               --target "$TARGET_SHA" \
               --title "$VERSION" \
-              --notes-file release-notes.md
+              --notes-file release-notes.md \
+              "${release_flags[@]}"
           fi

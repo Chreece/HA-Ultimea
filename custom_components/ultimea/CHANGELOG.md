@@ -4,6 +4,45 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.11.17b1
+
+### Added
+
+- Added a read-only Aura A60 Pro profile from issue #40's V57 diagnostic. Its observed `INFO 01:06=10` source is now recognized as eARC, with visible volume, input and sound-mode sensors. Unobserved source values remain unknown and no write controls are enabled.
+- Added sanitized diagnostic replay tests for the non-complement safe-code exchange, all nine reported state replies, all 25 raw capability bytes, standby options and direct-write rejection. A60 Pro volume remains a raw level because its maximum has not been verified.
+- First A60 Pro read-only beta for hardware feedback. Beta versions are published as GitHub prereleases without replacing the latest stable release.
+
+### Fixed
+
+- Synchronized the packaged changelog with the root changelog, including the previously missing October 10 entries.
+
+## 2026.10.10.2
+
+### Fixed
+
+- Corrected Poseidon D70 shutdown to wait for the matching `02:09 00` response. The reporter's actual PCAP proves an ACK arrives around 150 ms after the write; the prior no-ACK assumption in `2026.10.10.1` was incorrect.
+- Removed the unnecessary no-response GATT dispatch path. D70 power-off failures or missing ACKs no longer optimistically set the soundbar off; D80's previously proven disconnect behavior remains unchanged.
+- Parsed the attached D70 PCAPNG (249 BLE packets, 139 valid protocol frames), confirmed the V50 firmware, control replies for all five sources/mute/volume/power-off, and added anonymized capture-derived regression tests.
+- Restricted the D70 INFO source mapping to supported inputs, excluding HDMI.
+
+## 2026.10.10.1
+
+### Added
+
+- Poseidon D70: source selectors for Bluetooth and USB in addition to ARC, Optical and AUX, using the exact reporter-confirmed `02:02` control values.
+- D70 mute/unmute (`02:0A 00/01`) and power off (`02:09 00`) from the hardware reporter's command samples. Power-on is deliberately unavailable when the device is off and cannot accept Bluetooth connections.
+- Explicit no-reply D70 power-off transmission after the normal authenticated BLE handshake. No waiting for an impossible shutdown ACK, and no false OFF state after a rejected GATT write.
+- Nine regression tests from the reporter-confirmed command payloads, preserving D80/A40 safety gating.
+
+## 2026.10.10
+
+### Added
+
+- Added evidence-backed Aura A40 V56 read-only profile with visible volume, source and sound-mode status sensors; no unproven A40 controls are enabled.
+- Restricted A40 INFO decoding to its four documented inputs and prevented unsupported HDMI/ARC decoding from the common fallback.
+- Diagnostics and Capabilities sensor now separate available read features from verified writable features.
+- Added sanitized Aura A40 issue #5 regression fixture and source/write-isolation tests.
+
 ## 2026.10.06
 
 ### Fixed

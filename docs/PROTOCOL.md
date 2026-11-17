@@ -194,6 +194,39 @@ The A40 has Optical, Bluetooth, AUX and USB inputs, with **no HDMI/ARC**. INFO s
 
 Sources: [issue #5](https://github.com/Chreece/HA-Ultimea/issues/5), [ULTIMEA A40 connections](https://support.ultimea.com/hc/en-us/articles/38299427461273-Multiple-Connection-Methods-for-the-Aura-A40-Soundbar), [ULTIMEA V56 update](https://support.ultimea.com/hc/en-us/articles/41571846052249-Aura-A40-APP-OTA-Upgrade-V56).
 
+## Aura A60 Pro V57 read-only evidence (issue #40)
+
+The reporter's standalone read-only probe identifies `Aura A60 Pro`, firmware
+`V57`, protocol v1 and common `8D11/8D22` transport. It sent no CONTROL frame.
+The sanitized values are retained in
+`tests/fixtures/aura_a60_pro_v57_diagnostic.json`; no device address or serial
+is included.
+
+- Safe-code request `AA AD` and response `C4 C1` satisfy pair integrity but
+  not the D80 complement relation. The existing runtime already accepts this.
+- `INFO 01:06=10` was observed while the bar was on HDMI eARC. The
+  `aura_a60_pro` profile maps only this observed INFO value to eARC. It does
+  not assume that the remaining D80 CONTROL or INFO source enum applies.
+- The nine state replies report power `01`, mute `01`, volume `2A`, source
+  `10`, sound mode `01`, brightness `01`, screen timeout `02`, prompt sound
+  `00`, and auto standby `0F 00 07 00 00 0F 00 1E 00 3C 00 A0 05 40 0B F0 00`.
+- The standby payload contains current value 15 minutes, count **7**, and
+  options **0, 15, 30, 60, 1440, 2880, 240** minutes. The initial zero is
+  present in the bytes even though the issue's prose omits it.
+- `fetchAbilities` returns the following **25 raw bytes**, retained verbatim:
+
+```text
+00 01 00 01 01 00 01 01 01 01 00 00 01 00 00 01 01 01 01 01 01 00 00 01 01
+```
+
+The app-derived capability labels remain diagnostic hints, not verified A60
+Pro command mappings. In particular, tone/surround/X-Upmix flags do not prove
+their INFO or SET commands. No writable features, source setters, Custom EQ
+entities or Style actions are added. Volume status uses the raw level without
+assuming a 100-step range.
+
+Source: [issue #40](https://github.com/Chreece/HA-Ultimea/issues/40).
+
 ## Custom EQ and Custom Style
 
 `02:04` is overloaded for standard sound modes and the D80 custom sound profiles.

@@ -98,7 +98,7 @@ def test_runtime_diagnostics_and_sensor_guards_present():
     diagnostics = (INTEGRATION / "diagnostics.py").read_text(encoding="utf-8")
     assert "decode_source_value(self.identity.model, data[0], info=True)" in runtime
     assert "INFO_VALUE_TO_SOURCE.get(data[0])" not in runtime
-    assert 'profile_for_model(runtime.device.identity.model).key == "aura_a40"' in sensor
+    assert 'profile_for_model(runtime.device.identity.model).key in {"aura_a40", "aura_a60_pro"}' in sensor
     for key in ("observed_volume", "observed_source", "observed_sound_mode"):
         assert key in sensor
     assert "writable_features_for_model" in sensor
@@ -130,6 +130,7 @@ def test_a40_observed_sensor_values_match_reporter_diagnostic():
         "Feature": const.Feature,
         "SoundMode": const.SoundMode,
         "source_name_for_model": profiles.source_name_for_model,
+        "profile_for_model": profiles.profile_for_model,
     }
     exec(compile(ast.Module(body=[cls], type_ignores=[]), str(INTEGRATION / "sensor.py"), "exec"), scope)
     Sensor = scope["UltimeaObservedStateSensor"]

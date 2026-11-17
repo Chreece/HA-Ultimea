@@ -21,8 +21,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
     entities: list[SensorEntity] = [UltimeaCapabilitiesSensor(runtime.device)]
     if runtime.device.supports(Feature.STYLE):
         entities.extend(UltimeaStyleBand(runtime.device, i, hz) for i, hz in enumerate(EQ_FREQUENCIES_HZ))
-    # Give A40 owners normal, visible status sensors instead of fake controls.
-    if profile_for_model(runtime.device.identity.model).key == "aura_a40":
+    # Give models with read-only evidence visible status sensors.
+    if profile_for_model(runtime.device.identity.model).key in {"aura_a40", "aura_a60_pro"}:
         entities.extend(
             UltimeaObservedStateSensor(runtime.device, feature)
             for feature in (Feature.VOLUME, Feature.SOURCE, Feature.SOUND_MODE)
@@ -72,7 +72,7 @@ class UltimeaCapabilitiesSensor(UltimeaEntity, SensorEntity):
 
 
 class UltimeaObservedStateSensor(UltimeaEntity, SensorEntity):
-    """Visible read-only Aura A40 states; never sends any SET commands."""
+    """Visible read-only Aura states; never sends any SET commands."""
 
     _OBSERVED = {
         Feature.VOLUME: ("observed_volume", "mdi:volume-high"),
@@ -87,8 +87,12 @@ class UltimeaObservedStateSensor(UltimeaEntity, SensorEntity):
         self._attr_unique_id = (
             f"{device.identity.serial or device.address}_observed_{feature.value}"
         )
-        if feature is Feature.VOLUME:
-            # Firmware V56 has the documented 100-level volume system.
+        if (
+            feature is Feature.VOLUME
+            and profile_for_model(device.identity.model).key == "aura_a40"
+        ):
+            # Only A40 V56 has a documented 100-level volume system here.
+            # A60 Pro's raw value must not imply an unverified percentage.
             self._attr_native_unit_of_measurement = "%"
 
     @property

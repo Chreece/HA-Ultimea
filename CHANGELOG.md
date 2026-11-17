@@ -4,6 +4,18 @@ All notable changes to this project are documented here.
 
 The project uses calendar versioning for public releases: `YYYY.MM.DD` with patch suffixes when needed.
 
+## 2026.11.17b1
+
+### Added
+
+- Added a read-only Aura A60 Pro profile from issue #40's V57 diagnostic. Its observed `INFO 01:06=10` source is now recognized as eARC, with visible volume, input and sound-mode sensors. Unobserved source values remain unknown and no write controls are enabled.
+- Added sanitized diagnostic replay tests for the non-complement safe-code exchange, all nine reported state replies, all 25 raw capability bytes, standby options and direct-write rejection. A60 Pro volume remains a raw level because its maximum has not been verified.
+- First A60 Pro read-only beta for hardware feedback. Beta versions are published as GitHub prereleases without replacing the latest stable release.
+
+### Fixed
+
+- Synchronized the packaged changelog with the root changelog, including the previously missing October 10 entries.
+
 ## 2026.10.10.2
 
 ### Fixed
