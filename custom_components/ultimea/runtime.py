@@ -261,6 +261,23 @@ class UltimeaDevice(BaseUltimeaDevice):
     def _resolve_pending(self, frame: UltimeaFrame) -> None:
         """A profile read needs its full matching curve, not a one-byte mode ACK."""
         pending = self._pending
+        # M60 acknowledges Custom (02:04 08) with the complete 41-byte
+        # frequency-table response, rather than a separate one-byte echo.
+        if (
+            pending is not None
+            and profile_for_model(self.identity.model).key == "poseidon_m60"
+            and pending[:2] == (GROUP_CONTROL, CMD_SOUND_MODE)
+            and pending[2] == bytes([EQ_STYLE_PROFILE])
+        ):
+            eq = parse_d80_profile(frame.data)
+            if (
+                (frame.group, frame.command) == (GROUP_CONTROL, CMD_SOUND_MODE)
+                and eq is not None
+                and eq.profile == EQ_STYLE_PROFILE
+            ):
+                if not pending[3].done():
+                    pending[3].set_result(frame)
+                return
         if (
             self._profile_reply_expected is not None
             and pending is not None

@@ -11,6 +11,7 @@
     "muted": false,
     "raw_sound_mode": 1
   },
+  "custom_mode_response_data": "081f0000003e0000007d000000fa000000f4010000e8030000d0070000a00f0000401f0000803e0000",
   "redactions": {
     "address": "REDACTED",
     "serial": "REDACTED",
