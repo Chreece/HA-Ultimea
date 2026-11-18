@@ -36,6 +36,7 @@
 | --- | --- |
 | ULTIMEA Poseidon D80 Boom (U2623) | ✅ Hardware verified |
 | ULTIMEA Poseidon D70 | 🧪 Reporter-confirmed: volume, ARC/Optical/Bluetooth/AUX/USB, mute and power-off; BLE power-on unavailable |
+| ULTIMEA Poseidon M60 | ✅ Wire verified: power-off, volume, mute, eARC/Optical/Bluetooth/USB and Movie/Music/Voice/Sport/Night/Game/Custom modes; BLE power-on unavailable |
 | ULTIMEA Aura A40 (V56) | 🧪 Confirmed BLE discovery and read-only state; no verified write controls |
 | ULTIMEA Aura A60 Pro (V57) | 🧪 Reporter-confirmed read-only state, including eARC; no verified write controls |
 | Other ULTIMEA devices that pass the APK common/custom protocol probe | 🧪 Experimental, capability-driven/read-only writes unless proven |
@@ -107,6 +108,22 @@ The INFO source decoder is restricted to the D70's documented inputs
 (no HDMI). EQ and sound-mode writes remain disabled because the capture
 does not prove them. See [issue #4](https://github.com/Chreece/HA-Ultimea/issues/4).
 The D80 and Aura A40 profiles remain independent.
+
+## Poseidon M60 support
+
+The Poseidon M60 is a separate, wire-verified profile. It exposes power-off,
+absolute volume, mute, the four
+physical inputs (**eARC, Optical, Bluetooth and USB**) and **Movie, Music,
+Voice, Sport, Night, Game and Custom EQ** sound modes. It intentionally does
+not expose AUX or HDMI. **Bluetooth power-on is intentionally unavailable:** a
+captured `02:09 01` acknowledgement did not produce reliable real-world wake
+behavior, so Home Assistant exposes `TURN_OFF` but not `TURN_ON`.
+
+The M60 reports eARC as `INFO 01:06=10`, matching its `02:02 10` setter;
+this differs from the D80/D70 INFO eARC response. Its Custom selection is
+`02:04 08`. Although that selection returns a 41-byte frequency table, no
+writable M60 band-gain curve was captured, so the integration does not create
+the D80-only EQ number entities or Style actions.
 
 ## Poseidon D80 Boom entities
 

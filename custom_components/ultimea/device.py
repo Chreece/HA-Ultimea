@@ -49,13 +49,11 @@ from .const import (
     MINUTES_TO_STANDBY,
     PROMPT_SOUND_TO_VALUE,
     SCREEN_TIMEOUT_TO_VALUE,
-    SOUND_MODE_TO_VALUE,
     TRANSPORT_COMMON,
     TRANSPORT_UUIDS,
     VALUE_TO_BRIGHTNESS,
     VALUE_TO_PROMPT_SOUND,
     VALUE_TO_SCREEN_TIMEOUT,
-    VALUE_TO_SOUND_MODE,
     Brightness,
     Feature,
     PromptSound,
@@ -64,7 +62,15 @@ from .const import (
     Source,
 )
 from .models import UltimeaCapabilities, UltimeaIdentity, UltimeaState
-from .profiles import can_turn_on, can_write_feature, decode_source_value, profile_for_model, source_value_for_model
+from .profiles import (
+    can_turn_on,
+    can_write_feature,
+    decode_sound_mode_value,
+    decode_source_value,
+    profile_for_model,
+    sound_mode_value_for_model,
+    source_value_for_model,
+)
 from .protocol import UltimeaFrame, build_command, decode_ascii, iter_frames
 
 _LOGGER = logging.getLogger(__name__)
@@ -566,7 +572,7 @@ class UltimeaDevice:
             return True
         if frame.command == CMD_SOUND_MODE and len(data) == 1:
             self.state.raw_sound_mode = data[0]
-            mode = VALUE_TO_SOUND_MODE.get(data[0])
+            mode = decode_sound_mode_value(self.identity.model, data[0])
             if mode is not None:
                 self.state.sound_mode = mode
             return True
@@ -614,7 +620,7 @@ class UltimeaDevice:
             return True
         if frame.command == INFO_SOUND_MODE and len(data) == 1:
             self.state.raw_sound_mode = data[0]
-            mode = VALUE_TO_SOUND_MODE.get(data[0])
+            mode = decode_sound_mode_value(self.identity.model, data[0])
             if mode is not None:
                 self.state.sound_mode = mode
             return True
@@ -787,7 +793,7 @@ class UltimeaDevice:
                 lambda d: len(d) == 1
                 and decode_source_value(self.identity.model, d[0], info=True) is not None,
             ),
-            (Feature.SOUND_MODE, INFO_SOUND_MODE, lambda d: len(d) == 1 and d[0] in VALUE_TO_SOUND_MODE),
+            (Feature.SOUND_MODE, INFO_SOUND_MODE, lambda d: len(d) == 1 and decode_sound_mode_value(self.identity.model, d[0]) is not None),
             (Feature.BRIGHTNESS, INFO_BRIGHTNESS, lambda d: len(d) == 1 and d[0] in VALUE_TO_BRIGHTNESS),
             (Feature.SCREEN_TIMEOUT, INFO_SCREEN_TIMEOUT, lambda d: len(d) == 1 and d[0] in VALUE_TO_SCREEN_TIMEOUT),
             (Feature.PROMPT_SOUND, INFO_PROMPT_SOUND, lambda d: len(d) == 1 and d[0] in VALUE_TO_PROMPT_SOUND),
@@ -1002,7 +1008,12 @@ class UltimeaDevice:
         )
 
     async def async_set_sound_mode(self, mode: SoundMode) -> None:
-        data = bytes([SOUND_MODE_TO_VALUE[mode]])
+        value = sound_mode_value_for_model(self.identity.model, mode)
+        if value is None:
+            raise UltimeaCommandError(
+                f"sound mode {mode.value!r} is not proven for this ULTIMEA model"
+            )
+        data = bytes([value])
         await self._async_write_verified(
             CMD_SOUND_MODE,
             data,

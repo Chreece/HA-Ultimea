@@ -29,12 +29,11 @@ from .const import (
     INFO_SOURCE,
     INFO_VOLUME,
     INFO_XUPMIX,
-    VALUE_TO_SOUND_MODE,
     Feature,
     SoundMode,
 )
 from .device import UltimeaCommandError, UltimeaDevice as BaseUltimeaDevice, UltimeaError
-from .profiles import decode_source_value, profile_for_model
+from .profiles import decode_sound_mode_value, decode_source_value, profile_for_model
 from .eq_style import build_style_payload, parse_d80_profile
 from .protocol import (
     EQ_CUSTOM_PROFILE,
@@ -247,7 +246,7 @@ class UltimeaDevice(BaseUltimeaDevice):
         if value != self.state.raw_sound_mode or value not in (EQ_CUSTOM_PROFILE, EQ_STYLE_PROFILE):
             self._clear_profile_curve()
         self.state.raw_sound_mode = value
-        mode = VALUE_TO_SOUND_MODE.get(value)
+        mode = decode_sound_mode_value(self.identity.model, value)
         if mode is SoundMode.STYLE and not self.supports(Feature.STYLE):
             mode = None
         self.state.sound_mode = mode
@@ -262,6 +261,23 @@ class UltimeaDevice(BaseUltimeaDevice):
     def _resolve_pending(self, frame: UltimeaFrame) -> None:
         """A profile read needs its full matching curve, not a one-byte mode ACK."""
         pending = self._pending
+        # M60 acknowledges Custom (02:04 08) with the complete 41-byte
+        # frequency-table response, rather than a separate one-byte echo.
+        if (
+            pending is not None
+            and profile_for_model(self.identity.model).key == "poseidon_m60"
+            and pending[:2] == (GROUP_CONTROL, CMD_SOUND_MODE)
+            and pending[2] == bytes([EQ_STYLE_PROFILE])
+        ):
+            eq = parse_d80_profile(frame.data)
+            if (
+                (frame.group, frame.command) == (GROUP_CONTROL, CMD_SOUND_MODE)
+                and eq is not None
+                and eq.profile == EQ_STYLE_PROFILE
+            ):
+                if not pending[3].done():
+                    pending[3].set_result(frame)
+                return
         if (
             self._profile_reply_expected is not None
             and pending is not None
@@ -281,6 +297,15 @@ class UltimeaDevice(BaseUltimeaDevice):
         if frame.command == CMD_SOUND_MODE:
             eq = parse_d80_profile(frame.data)
             if eq is not None:
+                # M60 returns a 41-byte frequency table for its ordinary
+                # CUSTOM=08 selection. It is not a D80 editable Style curve.
+                if (
+                    decode_sound_mode_value(self.identity.model, eq.profile)
+                    is SoundMode.CUSTOM
+                    and not self.supports(Feature.EQUALIZER)
+                ):
+                    self._apply_sound_mode(eq.profile)
+                    return True
                 feature = Feature.STYLE if eq.profile == EQ_STYLE_PROFILE else Feature.EQUALIZER
                 if not self.supports(feature):
                     return False
@@ -358,9 +383,13 @@ class UltimeaDevice(BaseUltimeaDevice):
 
     async def async_set_sound_mode(self, mode: SoundMode) -> None:
         async with self._sound_mode_lock:
-            if mode in (SoundMode.CUSTOM, SoundMode.STYLE):
-                profile = EQ_STYLE_PROFILE if mode is SoundMode.STYLE else EQ_CUSTOM_PROFILE
-                await self._async_read_profile_locked(profile, activate=True)
+            # The M60's CUSTOM=08 is an ordinary selector. Only profiles with
+            # the D80 full-curve capability may enter the curve reader.
+            if mode is SoundMode.CUSTOM and self.supports(Feature.EQUALIZER):
+                await self._async_read_profile_locked(EQ_CUSTOM_PROFILE, activate=True)
+                return
+            if mode is SoundMode.STYLE and self.supports(Feature.STYLE):
+                await self._async_read_profile_locked(EQ_STYLE_PROFILE, activate=True)
                 return
             await super().async_set_sound_mode(mode)
 

@@ -15,6 +15,7 @@ import pytest
 ROOT = Path(__file__).parents[1]
 COMPONENT = ROOT / 'custom_components' / 'ultimea'
 CAPTURE = json.loads((ROOT / 'tests/fixtures/d80_style_capture.json').read_text())
+M60 = json.loads((ROOT / 'tests/fixtures/poseidon_m60_diagnostic.json').read_text())
 
 
 @pytest.fixture
@@ -121,6 +122,9 @@ class Peer:
         elif group==2 and command==4:
             self.mode=data[0]
             if len(data)==1:
+                if self.device.identity.model == 'Poseidon M60' and data == b'\x08':
+                    self.rx(group,command,bytes.fromhex(M60['custom_mode_response_data']))
+                    return
                 reply=self.curves[data[0]]
                 if self.short_ack:
                     self.rx(group,command,data)
@@ -134,10 +138,10 @@ class Peer:
         self.rx(group,command,reply)
 
 
-def device_with_peer(code, mode=8):
+def device_with_peer(code, mode=8, model=None):
     dev=code.runtime.UltimeaDevice(SimpleNamespace(), '00:00:00:00:00:01','Test D80')
     c=code.const
-    dev.identity.model=c.VERIFIED_MODEL
+    dev.identity.model=model or c.VERIFIED_MODEL
     dev.restore_capabilities()
     dev._available=True
     dev.state.power=True
@@ -203,6 +207,18 @@ def test_style_selection_waits_for_matching_complete_curve(code):
         assert peer.trace[:2][0]==(1,1,b'')
         assert peer.trace[1][:2]==(0,1)
         assert peer.trace[-1]==(2,4,b'\x08')
+    asyncio.run(run())
+
+
+def test_m60_custom_full_response_completes_pending_selection(code):
+    async def run():
+        dev, peer = device_with_peer(code, model='Poseidon M60')
+        await dev.async_set_sound_mode(code.const.SoundMode.CUSTOM)
+        assert peer.trace[-1] == (2, 4, b'\x08')
+        assert dev.state.raw_sound_mode == 8
+        assert dev.state.sound_mode is code.const.SoundMode.CUSTOM
+        assert dev.state.eq_profile_id is None
+        assert dev.state.eq_band_gains_tenths_db is None
     asyncio.run(run())
 
 
